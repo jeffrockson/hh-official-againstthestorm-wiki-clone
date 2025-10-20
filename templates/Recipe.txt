@@ -1,0 +1,11 @@
+<includeonly>{{#invoke: RecipeController | main
+    | product = {{{product| {{{1|}}} }}} 
+    | building = {{{building| {{{2|}}} }}} 
+    | ingredient = {{{ingredient|}}}
+    | display = {{{display|}}}
+}}
+</includeonly><noinclude>
+
+{{Documentation}}
+
+[[Category:Lua-based templates]]</noinclude>
