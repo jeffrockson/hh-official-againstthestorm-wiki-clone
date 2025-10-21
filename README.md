@@ -1,4 +1,35 @@
-# MediaWiki
+MediaWiki Runner for local module development in VSCode
+
+Clone this package into your local installation of MediaWiki w/ Scribunto, and you can debug your lua modules locally, using the same exact code as in your deployed modules, like "Module:" namespace. The main file (mw_runner.lua) looks for this namespace and replaces it with your paths as set in your launch environment variables.
+
+This performs no remote/server requests; all content must be on your local filesystem.
+
+At this time, your MW/php server does not need to be running for this to work, but if it is, and you save your module files, and refresh your browser, changes should be reflected immediately, because they are accessing the same files.
+
+
+## 21 Oct 2025
+I skipped writing a template auto-updater that would publish updates to template (or content I suppose) files via your MW localhost's API.
+
+The mw_runner now wraps title.new, json.decode, and the basic require to properly inject your path. be sure your path is set in launch settings. example paths are provided (and required for mw_runner to work).
+
+
+## 19 Oct 2025
+The .vscode/settings.json Removes all superfluous folders and files from the VSCode explorer. If you ever can't find a file (or I suppose try to create a file but are told it already exists), this is the first place to look.
+
+.cursorignore does not have the token file
+.gitignore does not have LocalSettings or token file
+
+be sure to have launch.json env set both MW_PATH_ROOT and LUA_LIB_PATH_ROOT that identify your local paths.
+
+For using the API, you need to store your token in plain text in csrftoken.txt
+You can find your token by: http://localhost:4000/api.php?action=query&meta=tokens&type=csrf&format=json
+
+In your LocalSettings.php, make sure you add this so template saves in VSCode can be automatically pushed to the local database for testing:
+Disable requiring login since this is local, so the API can be used directly without a session
+$wgGroupPermissions['*']['edit'] = true;
+
+
+## About MediaWiki
 
 MediaWiki is a free and open-source wiki software package written in PHP. It
 serves as the platform for Wikipedia and the other Wikimedia projects, used
@@ -36,17 +67,3 @@ later). Many thanks to the Wikimedia community for testing and suggestions.
 
 
 
-19 Oct 2025
-The .vscode/settings.json Removes all superfluous folders and files from the VSCode explorer. If you ever can't find a file (or I suppose try to create a file but are told it already exists), this is the first place to look.
-
-.cursorignore does not have the token file
-.gitignore does not have LocalSettings or token file
-
-be sure to have launch.json env set both MW_PATH_ROOT and LUA_LIB_PATH_ROOT that identify your local paths.
-
-For using the API, you need to store your token in plain text in csrftoken.txt
-You can find your token by: http://localhost:4000/api.php?action=query&meta=tokens&type=csrf&format=json
-
-In your LocalSettings.php, make sure you add this so template saves in VSCode can be automatically pushed to the local database for testing:
-# Disable requiring login since this is local, so the API can be used directly without a session
-$wgGroupPermissions['*']['edit'] = true;
