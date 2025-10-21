@@ -10,9 +10,10 @@
       "request": "launch",
       "program": "${workspaceFolder}/mw_runner.lua",
       "env": {
-        "MW_PATH": "C:\\tools\\mediawiki-1.44.2",
-        "LUA_LIB_PATH": "C:\\tools\\mediawiki-1.44.2\\extensions\\Scribunto",
-        "MODULE_FILE": "${file}"
+        "MW_PATH": "C:/tools/mediawiki-1.44.2",
+        "LUA_LIB_PATH": "C:/tools/mediawiki-1.44.2/extensions/Scribunto/includes/Engines/LuaCommon/lualib",
+        "MODULE_PATH": "C:/tools/mediawiki-1.44.2/extensions/Scribunto/modules",
+        "TARGET": "${file}"
       }
     }
   ]
