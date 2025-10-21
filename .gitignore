@@ -57,4 +57,5 @@ extensions/Scribunto/modules/ext.scribunto.logs.css
 
 # --- Other files ---
 csrftoken.txt
-
+apilogin.json
+.env

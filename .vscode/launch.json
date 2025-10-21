@@ -1,0 +1,19 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug MediaWiki Lua Module",
+      "type": "lua",
+      "request": "launch",
+      "program": "${workspaceFolder}/mw_runner.lua",
+      "env": {
+        "MW_PATH": "C:\\tools\\mediawiki-1.44.2",
+        "LUA_LIB_PATH": "C:\\tools\\mediawiki-1.44.2\\extensions\\Scribunto",
+        "MODULE_FILE": "${file}"
+      }
+    }
+  ]
+}

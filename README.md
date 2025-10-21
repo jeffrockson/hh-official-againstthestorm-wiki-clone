@@ -33,3 +33,20 @@ MediaWiki is the result of global collaboration and cooperation. The CREDITS
 file lists technical contributors to the project. The COPYING file explains
 MediaWiki's copyright and license (GNU General Public License, version 2 or
 later). Many thanks to the Wikimedia community for testing and suggestions.
+
+
+
+19 Oct 2025
+The .vscode/settings.json Removes all superfluous folders and files from the VSCode explorer. If you ever can't find a file (or I suppose try to create a file but are told it already exists), this is the first place to look.
+
+.cursorignore does not have the token file
+.gitignore does not have LocalSettings or token file
+
+be sure to have launch.json env set both MW_PATH_ROOT and LUA_LIB_PATH_ROOT that identify your local paths.
+
+For using the API, you need to store your token in plain text in csrftoken.txt
+You can find your token by: http://localhost:4000/api.php?action=query&meta=tokens&type=csrf&format=json
+
+In your LocalSettings.php, make sure you add this so template saves in VSCode can be automatically pushed to the local database for testing:
+# Disable requiring login since this is local, so the API can be used directly without a session
+$wgGroupPermissions['*']['edit'] = true;
