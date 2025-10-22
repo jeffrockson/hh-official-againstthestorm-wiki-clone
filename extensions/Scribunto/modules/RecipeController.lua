@@ -1,8 +1,6 @@
 --- @module RecipeController
 local RecipeController = {}
 
-
-
 --region Dependencies
 
 local BuildingDataProxy = require("Module:BuildingDataProxy")
