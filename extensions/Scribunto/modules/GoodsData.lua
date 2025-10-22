@@ -176,7 +176,7 @@ local function loadData()
 	
 	-- Now restructure to be more conducive for data about goods.
 	local allTables = mw.loadData("Module:GoodsData/Data")
-	goodsTable = allTables[1]
+ 	goodsTable = allTables[1]
 	mapNamesToIDs = allTables[2]
 	
 	

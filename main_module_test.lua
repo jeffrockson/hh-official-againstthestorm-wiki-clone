@@ -1,4 +1,4 @@
-local frame = mw_runner.setFrame()
-
 local module = require("Module:RecipeController")
-module.main(frame)
+local frame = mw_runner.setFrame({ ["product"] = "Biscuits" })
+
+print(module.main(frame))
