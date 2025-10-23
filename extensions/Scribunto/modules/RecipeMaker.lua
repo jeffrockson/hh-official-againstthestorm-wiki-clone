@@ -1,9 +1,48 @@
---- @module RecipeController
-local RecipeController = {}
+-- Makes beautiful displays for recipes.
+local RecipeMaker = {}
+
+-- A frame object provided by MediaWiki when invoking a module.<br>
+-- See [Official MediaWiki doc on frame objects](https://www.mediawiki.org/wiki/Extension:Scribunto/Lua_reference_manual#Frame_object)
+---@class Frame : table
+---@field args table Template arguments in the frame passed to the module.
+---@field expandTemplate fun(self: Frame, options: {title: string, args: table}): string function to call the titled MediaWiki template with the specified args.
+
+-- A single recipe with one product, one grade, and one stack; possibly in more than one building.
+---@class Recipe : table
+---@field private buildingArray BuildingID[] The ID codes of buildings that can make this recipe.
+---@field private grade integer How many efficiency stars (0-3) the recipe has.
+---@field private time number Seconds to produce one product.
+---@field private productID ProductID The ID code of what is produced.
+---@field private isService boolean `true` if this recipe offers a service instead of a product.
+---@field private productStackSize integer Quantity of goods produced each cycle.
+---@field private ingredientsArray IngredientsArray Several ingredients slots of several options each.
+---@field public new fun(buildingArray: BuildingID[], grade: integer, time: number, productID, ProductID, isService: boolean, productStackSize: integer, ingredientsArray: IngredientsArray): Recipe Constructor.
+---@field public getNumIngredients fun(self: Recipe): integer Gets the number of slots in `ingredientsArray`
+
+-- Array of (usually 1-2, can be 0 or 3) ingredient slots to make the recipe.
+---@alias IngredientsArray IngredientSlot[]
+-- Array of (usually 1-6, can be 8) interchangeable options for one ingredient slot in a recipe.
+---@alias IngredientSlot IngredientOption[]
+-- One acceptable option of good to use in the recipe.
+---@alias IngredientOption {id: GoodID, amount: integer}
+
+-- Recipes sorted by [productID][grade][stackSize].
+---@alias RecipeList table<ProductID, RecipeSublistByGrade>
+-- Subset of recipes sorted by [grade][stackSize].
+---@alias RecipeSublistByGrade table<integer, RecipeSublistByStacksize>
+-- Subsubset of recipes sorted by [stackSize].
+---@alias RecipeSublistByStacksize table<integer, Recipe>
+
+-- The ID code of a building that makes a recipe.
+---@alias BuildingID string
+-- The ID code of a good or service made by a recipe.
+---@alias ProductID string
+-- The ID code of a good.
+---@alias GoodID string
 
 
 
---region Dependencies
+--region dependencies
 
 local BuildingDataProxy = require("Module:BuildingDataProxy")
 
@@ -21,12 +60,11 @@ local DataModelsWithRecipes = {
 }
 
 local GoodsData = require("Module:GoodsData")
---For looking up services
 local InstitutionsData = require("Module:InstitutionsData")
 
-local VIEW_TEMPLATE_START = "Recipe/view"
-local VIEW_TEMPLATE_ROW = "Recipe/view/row"
-local VIEW_TEMPLATE_END = "Recipe/view/end"
+local VIEW_TEMPLATE_START_REFACTOR_ME = "Recipe/view"
+local VIEW_TEMPLATE_ROW_REFACTOR_ME = "Recipe/view/row"
+local VIEW_TEMPLATE_END_REFACTOR_ME = "Recipe/view/end"
 
 local VIEW_BUILDING_LINK = "Building_link/view"
 local VIEW_RESOURCE_LINK = "Resource_link/view"
@@ -37,59 +75,175 @@ local TEMPLATE_SERVICE_LINK = "Service_link"
 
 
 
---region Private constants
+--region package-private class
 
-local ARG_DISPLAY_OVERRIDE_LIST = "list"
+---@class Recipe
+local Recipe = {}
 
-local INDEX_RECIPE_BUILDINGS_ARRAY = "buildingsArray"
-local INDEX_RECIPE_GRADE = "grade"
-local INDEX_RECIPE_TIME = "time"
-local INDEX_RECIPE_PRODUCT_NAME = "productName"
-local INDEX_RECIPE_PRODUCT_AMOUNT = "productAmount"
-local INDEX_RECIPE_IS_SERVICE = "isRecipeService"
-local INDEX_RECIPE_INGREDIENTS = "ingredientsTable"
+-- Constructs a new Recipe object with the provided data.
+---@param buildingArray BuildingID[] array of building IDs where this recipe appears
+---@param grade integer between 0 and 3
+---@param time number in seconds
+---@param productID ProductID the ID of the product or service made by this recipe
+---@param isService boolean `true` if this recipe produces a service instead of a good
+---@param productStackSize integer how many products are made by this recipe
+---@param ingredientsArray IngredientsArray array of slots (1-3), each an array of options (1-8)
+---@return Recipe # the new Recipe object
+---@package
+function Recipe.new(buildingArray, grade, time, isService, productID, productStackSize, ingredientsArray)
 
-local INDEX_OPTION_ID = "name" -- this is for backwards compatibility, it's actually an ID
-local INDEX_OPTION_AMOUNT = "amount"
+	---@type Recipe
+	local instance = {
+		buildingArray = buildingArray,
+		grade = grade,
+		time = time,
+		productID = productID,
+		isService = isService or false,
+		productStackSize = productStackSize,
+		ingredientsArray = ingredientsArray
+	}
+	-- Allow this instance to use Recipe class methods.
+	setmetatable(instance, { __index = Recipe} )
+
+	-- Perform error checking.
+	-- These would all be due to coding errors, not template use errors facing wiki authors, so these messages are not extracted as internationalizable strings.
+
+	if not buildingArray or #buildingArray < 1 then
+		error("[RecipeMaker/Recipe] constructor got empty array of building IDs")
+	end
+
+	if not grade then
+		error("[RecipeMaker/Recipe] constructor got empty grade")
+	elseif grade > 4 or grade < 0 then
+		error ("[RecipeMaker/Recipe] constructor got invalid grade number")
+	end
+
+	if not time then
+		error ("[RecipeMaker/Recipe] constructor got empty time")
+	elseif time < 0 then
+		error ("[RecipeMaker/Recipe] constructor got invalid time number")
+	end
+
+	if not productID or productID == "" then
+		error ("[RecipeMaker/Recipe] constructor got empty product ID")
+	end
+
+	if not productStackSize then
+		error("[RecipeMaker/Recipe] constructor got empty amount")
+	elseif productStackSize < 1 then
+		error("[RecipeMaker/Recipe] constructor got invalid amount number")
+	end
+
+	if not ingredientsArray then
+		error("[RecipeMaker/Recipe] constructor got empty ingredients array")
+	elseif #ingredientsArray > 3 then
+		error("[RecipeMaker/Recipe] constructor got ingredients array larger than 3 slots")
+	end
+
+	for i, optionsArray in ipairs(ingredientsArray) do
+		if not optionsArray or #optionsArray < 1 then
+			error("[RecipeMaker/Recipe] constructor got empty slot at index " .. i)
+		end
+		if #optionsArray > 8 then
+			error("[RecipeMaker/Recipe] constructor got options array larger than 8 at index " .. i)
+		end
+		for j, option in ipairs(optionsArray) do
+			if not option then
+				error("[RecipeMaker/Recipe] constructor got empty option at index " .. i .. ", " .. j)
+			end
+			if not option.id or option.id == "" then
+				error("[RecipeMaker/Recipe] constructor got empty option ID at index " .. i .. ", " .. j)
+			end
+			if not option.amount then
+				error("[RecipeMaker/Recipe] constructor got empty option amount at index " .. i .. ", " .. j)
+			end
+			if option.amount < 1 then
+				error("[RecipeMaker/Recipe] constructor got invalid option amount at index" .. i .. ", " .. j)
+			end
+		end
+	end
+
+	return instance
+end
+
+-- Adds the specified building to this Recipe's list where the recipe is made.<br>
+-- This is useful for when consolidating recipes across buildings.
+---@param newBuildingID BuildingID the ID code of the building to add to the Recipe
+---@return Recipe # the same Recipe object
+---@package
+function Recipe:addBuilding(newBuildingID)
+	if not self.buildingArray then
+		self.buildingArray = { newBuildingID }
+	else
+		-- Skip duplicates. It shouldn't happen in 99% of cases, but just to be sure.
+		for _, existingBuildingID in ipairs(self.buildingArray) do
+			if existingBuildingID == newBuildingID then
+				return self
+			end
+		end
+		table.insert(self.buildingArray, newBuildingID)
+	end
+	return self
+end
+
+-- Gets the number of ingredient slots (between 0-3).
+---@return integer
+---@package
+function Recipe:getNumIngredients()
+	return #self.ingredientsArray
+end
+
+--endregion
+
+
+
+--region i18n
+
+local ERROR_MESSAGE_EMPTY_PARAMETERS = "Template:Recipe requires at least a product, building, or ingredient. Please see the template documentation for how to use the parameters"
+
+--endregion
+
+
+
+--region private constants
 
 local VIEW_TABLE_BUILDING_SINGLE_ICON_SIZE = "huge"
 local VIEW_TABLE_BUILDING_MULTIPLE_ICON_SIZE = "large"
 local VIEW_TABLE_INGREDIENT_ICON_SIZE = "medium"
 local VIEW_TABLE_PRODUCT_ICON_SIZE = "huge"
 
-local VIEW_CLASS_TABLE_INGREDIENTS_SINGLE_ICON = 'class=ats-single-ingredient-icon'
-local VIEW_CLASS_TABLE_INGREDIENTS_SWAPPABLE_ICON = 'class=ats-swappable-ingredient-icon'
+local CLASSNAME_FRAME_INGREDIENT_SINGLE = 'class=ats-single-ingredient-icon'
+local CLASSNAME_FRAME_INGREDIENT_SWAP = 'class=ats-swappable-ingredient-icon'
 
-local VIEW_GRADES = {
+---@enum GRADES_VIEW
+local GRADES_VIEW = {
 	[0] = '0Star',
 	[1] = '1Star',
 	[2] = '2Star',
 	[3] = '3Star',
 }
-
---- Transform the grade only when using the value as an index, to help it sort better whenever possible.
-local STORE_GRADES = {
+-- Transforms when using the grade as an index to sort things whenever possible.
+---@enum GRADES
+local GRADES = {
 	[0] = 1,
 	[1] = 2,
 	[2] = 3,
 	[3] = 4,
 }
 
-local MARKUP_NEWLINE_FORCED = "\n<!-- -->\n"
-
-local ERROR_MESSAGE_EMPTY_PARAMETERS = "You must specify a product, building, or ingredient. Please see the template documentation for how to use the parameters"
+local NEWLINE_REFACTOR_ME = "\n<!-- -->\n"
 
 --endregion
 
 
 
---region Private member variables
+--region private member variables
 --none!
 --endregion
 
 
 
---region Private methods
+--region private methods
 
 ---getFlatRecipeValues
 ---Extracts a handful of values from the provided recipe pair.
@@ -199,30 +353,29 @@ local function compileRecipeLists(DataModel, recipeObjectTable, rawRecipeTable)
 			recipeObjectTable[productName] = {}
 		end
 		--Transform the grade values to store them in a natural order.
-		if not recipeObjectTable[productName][STORE_GRADES[grade]] then
-			recipeObjectTable[productName][STORE_GRADES[grade]] = {}
+		if not recipeObjectTable[productName][GRADES[grade]] then
+			recipeObjectTable[productName][GRADES[grade]] = {}
 		end
-		if not recipeObjectTable[productName][STORE_GRADES[grade]][productAmount] then
+		if not recipeObjectTable[productName][GRADES[grade]][productAmount] then
 			--Create a new Recipe object at this place in the table.
-			recipeObjectTable[productName][STORE_GRADES[grade]][productAmount] = RecipeController.Recipe.new( { buildingName }, grade, time, isService, productID, productAmount, ingredientsTable)
+			recipeObjectTable[productName][GRADES[grade]][productAmount] = RecipeMaker.Recipe.new( { buildingName }, grade, time, isService, productID, productAmount, ingredientsTable)
 		else
 			--Add the building to the existing Recipe object at this place in the table.
-			recipeObjectTable[productName][STORE_GRADES[grade]][productAmount]:addBuilding(buildingName)
+			recipeObjectTable[productName][GRADES[grade]][productAmount]:addBuilding(buildingName)
 		end
 	end
 
 	return recipeObjectTable
 end
 
----getRecipesFromAllDataModels
 ---Goes through all data models and compiles the results into a single 3-factor table of Recipe objects, [product][grade][amount]. This table will be sparse, and note sometimes the grade is harder to spot in the console if it starts at 1 and is followed by 2 (because the console interprets it as an un-keyed array.
 ---
 ---For example, finding the recipe for Biscuits in the Field Kitchen: recipeObjectArray["Biscuits"][0][10]
 ---
----@param requiredProduct string the name of the product, or nil if any
----@param requiredBuilding string the name of the building, or nil if any
----@param requiredIngredient string the name of the ingredient, or nil if any
----@return table a 3-factor compiled table of Recipe objects, [product][grade][amount]
+---@param requiredProduct string|nil the name of the product, or nil if any
+---@param requiredBuilding string|nil the name of the building, or nil if any
+---@param requiredIngredient string|nil the name of the ingredient, or nil if any
+---@return RecipeList a 3-factor compiled table of Recipe objects, [product][grade][amount]
 local function getRecipesFromAllDataModels(requiredProduct, requiredBuilding, requiredIngredient)
 
 	--Resolve names to IDs, start them all as nil as wildcards.
@@ -299,9 +452,9 @@ end
 ---calculateCaption
 ---Simple cascading of rewriting the author requirements into the caption and how many were returned.
 ---
----@param requiredProduct string name of product, or nil if any
----@param requiredBuilding string name of building, or nil if any
----@param requiredIngredient string name of ingredient, or nil if any
+---@param requiredProduct string|nil name of product, or nil if any
+---@param requiredBuilding string|nil name of building, or nil if any
+---@param requiredIngredient string|nil name of ingredient, or nil if any
 ---@param numRecipes number of recipes
 ---@return string the caption
 local function calculateCaption(requiredProduct, requiredBuilding, requiredIngredient, numRecipes)
@@ -369,13 +522,13 @@ end
 ---@return string
 local function addIngredientSlot(frame, ingredientSlot)
 
-	local innerTable = MARKUP_NEWLINE_FORCED .. "{|" --all table markup has to start on its own line; this html comment accomplishes this
+	local innerTable = NEWLINE_REFACTOR_ME .. "{|" --all table markup has to start on its own line; this html comment accomplishes this
 	local numOptions = #ingredientSlot
 
 	if numOptions > 1 then
-		innerTable = innerTable .. VIEW_CLASS_TABLE_INGREDIENTS_SWAPPABLE_ICON
+		innerTable = innerTable .. CLASSNAME_FRAME_INGREDIENT_SWAP
 	else
-		innerTable = innerTable .. VIEW_CLASS_TABLE_INGREDIENTS_SINGLE_ICON
+		innerTable = innerTable .. CLASSNAME_FRAME_INGREDIENT_SINGLE
 	end
 
 	for _, option in ipairs(ingredientSlot) do
@@ -449,9 +602,9 @@ end
 ---@param frame table MediaWiki template context
 ---@param recipeList table 3-factor list of Recipe objects, by [product][grade][amount]
 ---@param maxIngredients number of ingredients the largest Recipe has
----@param requiredProduct string name of product, or nil if any
----@param requiredBuilding string name of building, or nil if any
----@param _ string name of ingredient, or nil if any
+---@param requiredProduct string|nil name of product, or nil if any
+---@param requiredBuilding string|nil name of building, or nil if any
+---@param _ string name of ingredient, or nil if any (unused)
 ---@return string a long string of wiki markup
 local function buildMiddle(frame, recipeList, maxIngredients, requiredProduct, requiredBuilding, _)
 
@@ -464,13 +617,13 @@ local function buildMiddle(frame, recipeList, maxIngredients, requiredProduct, r
 				local rowArgs = {}
 				rowArgs["maxingredients"] = maxIngredients
 
-				rowArgs["building"] = MARKUP_NEWLINE_FORCED .. "{|" --all table markup has to start on its own line; this html comment accomplishes this
+				rowArgs["building"] = NEWLINE_REFACTOR_ME .. "{|" --all table markup has to start on its own line; this html comment accomplishes this
 
 				rowArgs["building"] = rowArgs["building"]
 						.. addBuildingLinks(frame, recipe, requiredBuilding) .. "\n|}"
 
 				rowArgs["grade"] = frame:expandTemplate{
-					title = VIEW_GRADES[recipe[INDEX_RECIPE_GRADE]],
+					title = GRADES_VIEW[recipe[INDEX_RECIPE_GRADE]],
 					args = {},
 				}
 				local minutes = math.floor(recipe[INDEX_RECIPE_TIME] / 60)
@@ -486,7 +639,7 @@ local function buildMiddle(frame, recipeList, maxIngredients, requiredProduct, r
 						.. addProductLinks(frame, recipe, requiredProduct)
 
 				ret = ret .. frame:expandTemplate{
-					title = VIEW_TEMPLATE_ROW,
+					title = VIEW_TEMPLATE_ROW_REFACTOR_ME,
 					args = rowArgs,
 				}
 				ret = ret .. "\n"
@@ -497,15 +650,37 @@ local function buildMiddle(frame, recipeList, maxIngredients, requiredProduct, r
 	return ret
 end
 
+local function renderTableView(recipeList, requiredProduct, requiredBuilding, requiredIngredient)
+	local numRecipes = countRecipes(recipeList)
+	local maxIngredients = countMaxIngredients(recipeList)
+	local caption = calculateCaption(requiredProduct, requiredBuilding, requiredIngredient, numRecipes)
+
+	local retStart = frame:expandTemplate{
+		title = VIEW_TEMPLATE_START_REFACTOR_ME,
+		args = {
+			["maxingredients"] = maxIngredients,
+			["caption"] = caption,
+			["numrecipes"] = numRecipes,
+		}
+	}
+
+	local retMiddle = buildMiddle(frame, recipeList, maxIngredients, requiredProduct, requiredBuilding, requiredIngredient)
+
+	local retEnd = frame:expandTemplate{
+		title = VIEW_TEMPLATE_END_REFACTOR_ME,
+		args = {},
+	}
+
+	return retStart .. retMiddle .. retEnd
+end
+
 ---renderListView
 ---Takes the table of recipes gathered from the data models and returns a markup-unordered-list of the recipes. Buildings are shown when the author requested the product, otherwise the products are shown.
 ---
 ---@param frame table the Mediawiki context for the template
 ---@param recipeList table 3-factor table of Recipe objects in [product][grade][amount]
----@param requiredProduct string name of the product, or nil if any
----@param _ string name of the building, or nil if any (unused)
----@param _ string name of the ingredient, or nil if any (unused)
-local function renderListView(frame, recipeList, requiredProduct, _, _)
+---@param requiredProduct string|nil name of the product, or nil if any
+local function renderListView(frame, recipeList, requiredProduct)
 
 	local ret = ""
 	for _, recipeProductSubtable in pairs(recipeList) do
@@ -553,7 +728,7 @@ local function renderListView(frame, recipeList, requiredProduct, _, _)
 
 					rowText = rowText .. "&nbsp;("
 					rowText = rowText .. frame:expandTemplate{
-						title = VIEW_GRADES[recipe[INDEX_RECIPE_GRADE]],
+						title = GRADES_VIEW[recipe[INDEX_RECIPE_GRADE]],
 						args = {},
 					}
 
@@ -572,205 +747,37 @@ end
 
 
 
---region Public classes
-
-local Recipe = {}
-
--- This class available outside for read-only access
-RecipeController.Recipe = Recipe
-RecipeController.Recipe.OPTION_ID = INDEX_OPTION_ID
-RecipeController.Recipe.OPTION_AMOUNT = INDEX_OPTION_AMOUNT
-
----new
----constructs a new Recipe instance from the provided data.
----
----the ingredientsTable must follow this format:
----ingredientsTable = {
----		--ingredient slots in recipe, between 1 and 3
----		[1] = {
----			--options for that slot, between 1 and 6
----			[1] = {
----				--each option's ID and amount
----				[Recipe.OPTION_ID] = string,
----				[Recipe.OPTION_STACK_SIZE] = number,
----			},
----			[2] = ...
----		},
----		[2] = ...
----}
----
----@param buildingArray table array of the names of buildings that make this recipe
----@param grade number of stars, between 0 and 3
----@param time number of seconds to produce
----@param productName string name of the good produced
----@param isService boolean true if this recipe offers a service instead of a product
----@param productStackSize number of goods produced each cycle
----@param ingredientsTable table array of 1-3 ingredient slots, each with 1-6 options, each with name and amount (see doc above)
-function Recipe.new(buildingArray, grade, time, isService, productName, productStackSize, ingredientsTable)
-
-	local instance = {}
-	setmetatable(instance, { __index = Recipe} ) -- allow this instance to use Recipe class methods
-
-	if not buildingArray or type(buildingArray) ~= "table" or #buildingArray < 1 then
-		error("Cannot construct new Recipe with an empty building list")
-	end
-	instance[INDEX_RECIPE_BUILDINGS_ARRAY] = buildingArray
-
-	if not grade or grade == "" then
-		error("Cannot construct new Recipe with an empty grade.")
-	elseif type(grade) ~= "number" or grade > 4 or grade < 0 then
-		error ("Cannot construct new Recipe with an invalid grade value")
-	end
-	instance[INDEX_RECIPE_GRADE] = grade
-
-	if not time or time == "" then
-		error ("Cannot construct new Recipe with an empty production time")
-	elseif type(time) ~= "number" or time < 0 then
-		error ("Cannot construct new Recipe with an invalid production time value")
-	end
-	instance[INDEX_RECIPE_TIME] = time
-
-	if type(isService) ~= "boolean" then
-		error("Cannot construct new Recipe with an invalid service flag")
-	end
-	instance[INDEX_RECIPE_IS_SERVICE] = isService
-
-	if not productName or productionName == "" then
-		error ("Cannot construct new Recipe with an empty product name")
-	end
-	instance[INDEX_RECIPE_PRODUCT_NAME] = productName
-
-	if not productStackSize or productStackSize == "" then
-		error("Cannot construct new Recipe with an empty product amount")
-	elseif type(productStackSize) ~= "number" or productStackSize < 1 then
-		error("Cannot construct new Recipe with an invalid product amount value")
-	end
-	instance[INDEX_RECIPE_PRODUCT_AMOUNT] = productStackSize
-
-	if not ingredientsTable or type(ingredientsTable) ~= "table" then
-		error("Cannot construct new Recipe with an invalid ingredients table")
-	end
-	if #ingredientsTable > 3 then
-		error("Cannot construct new Recipe with an ingredients table larger than 3 subtables")
-	end
-	for i, optionsArray in ipairs(ingredientsTable) do
-		if not optionsArray or type(optionsArray) ~= "table" or #optionsArray < 1 then
-			error("Cannot construct new Recipe with an empty options list (at index " .. i .. ")")
-		end
-		if #optionsArray > 8 then
-			error("Cannot construct new Recipe with an options array larger than 8 subtables (at index " .. i .. ")")
-		end
-		for j, option in ipairs(optionsArray) do
-			if not option or type(option) ~= "table" then
-				error("Cannot construct new Recipe with an empty option (at index " .. i .. ", " .. j .. ")")
-			end
-			if not option[INDEX_OPTION_ID] or option[INDEX_OPTION_ID] == "" then
-				error("Cannot construct a new Recipe with an empty option ID (at index " .. i .. ", " .. j .. ")")
-			end
-			if not option[INDEX_OPTION_AMOUNT] or type(option[INDEX_OPTION_AMOUNT]) ~= "number" then
-				error("Cannot construct a new Recipe with an empty option amount (at index " .. i .. ", " .. j .. ")")
-			end
-			if option[INDEX_OPTION_AMOUNT] < 1 then
-				error("Cannot construct a new Recipe with an invalid option amount (at index" .. i .. ", " .. j .. ")")
-			end
-		end
-	end
-	instance[INDEX_RECIPE_INGREDIENTS] = ingredientsTable
-
-	return instance
-end
-
----addBuilding
----Adds the provided building to this Recipe object's list of buildings where the recipe is made.
----
----@param buildingName string name
-function Recipe:addBuilding(buildingName)
-
-	if not self[INDEX_RECIPE_BUILDINGS_ARRAY] then
-		self[INDEX_RECIPE_BUILDINGS_ARRAY] = { buildingName }
-	else
-		-- Skip duplicates. It shouldn't happen in 99% of cases, but just to be sure.
-		for _, existingBuilding in ipairs(self[INDEX_RECIPE_BUILDINGS_ARRAY]) do
-			if existingBuilding == buildingName then
-				return
-			end
-		end
-		table.insert(self[INDEX_RECIPE_BUILDINGS_ARRAY], buildingName)
-	end
-end
-
----getNumIngredients
----The number of ingredient slots (0-3) in the Recipe object.
----
----@return number of ingredients slots
-function Recipe:getNumIngredients()
-
-	if not self[INDEX_RECIPE_INGREDIENTS] then
-		return 0
-	end
-
-	return #self[INDEX_RECIPE_INGREDIENTS]
-end
-
---endregion
-
-
-
 --region Public methods
 
----main
----Called from Template:Recipe. Returns markup text for display by using external view templates.
----
----@param frame table the Mediawiki calling context for the template
----@return string wiki markup
-function RecipeController.main(frame)
+-- Main function invoked externally from *Template:Recipe*.
+-- At least one filter parameter (product, building, or ingredient) must be provided.
+-- Empty filter parameters are treated as wildcards.
+---@param frame Frame the current MediaWiki frame
+---@return string wiki_markup formatted wikitable containing matching recipes
+function RecipeMaker.main(frame)
 
-	local requiredProduct = frame.args.product
-	local requiredBuilding = frame.args.building
-	local requiredIngredient = frame.args.ingredient
-	local displayOverride = frame.args.display
+	-- nil is allowed as a wildcard ("no required product"), so unset unallowed blank strings to nil.
+	-- An empty args list is not allowed and deserves an error.
 
-	--Unset blanks back to nil
-	if requiredProduct == "" then
-		requiredProduct = nil
-	end
-	if requiredBuilding == "" then
-		requiredBuilding = nil
-	end
-	if requiredIngredient == "" then
-		requiredIngredient = nil
+	local requiredProduct = frame.args.product ~= "" and frame.args.product or nil
+	local requiredBuilding = frame.args.building ~= "" and frame.args.building or nil
+	local requiredIngredient = frame.args.ingredient ~= "" and frame.args.ingredient or nil
+
+	if not requiredProduct and not requiredBuilding and not requiredIngredient then
+		error(ERROR_MESSAGE_EMPTY_PARAMETERS)
 	end
 
-	-- recipeList is a 3-factor array of Recipe objects, by [product][grade][stackSize]
+	-- complete list of recipes populated from data models
+	---@type RecipeList
 	local recipeList = getRecipesFromAllDataModels(requiredProduct, requiredBuilding, requiredIngredient)
 
-	if displayOverride == ARG_DISPLAY_OVERRIDE_LIST then
-		return renderListView(frame, recipeList, requiredProduct, requiredBuilding, requiredIngredient)
+	if frame.args.display == "list" then
+		return renderListView(recipeList, requiredProduct, requiredBuilding, requiredIngredient)
+	else
+		return renderTableView(recipeList, requiredProduct, requiredBuilding, requiredIngredient)
 	end
-
-	local numRecipes = countRecipes(recipeList)
-	local maxIngredients = countMaxIngredients(recipeList)
-	local caption = calculateCaption(requiredProduct, requiredBuilding, requiredIngredient, numRecipes)
-
-	local retStart = frame:expandTemplate{
-		title = VIEW_TEMPLATE_START,
-		args = {
-			["maxingredients"] = maxIngredients,
-			["caption"] = caption,
-			["numrecipes"] = numRecipes,
-		}
-	}
-
-	local retMiddle = buildMiddle(frame, recipeList, maxIngredients, requiredProduct, requiredBuilding, requiredIngredient)
-
-	local retEnd = frame:expandTemplate{
-		title = VIEW_TEMPLATE_END,
-		args = {},
-	}
-
-	return retStart .. retMiddle .. retEnd
 end
 
 --endregion
 
-return RecipeController
+return RecipeMaker
