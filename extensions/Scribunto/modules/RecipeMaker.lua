@@ -1,48 +1,15 @@
 -- Makes beautiful displays for recipes.
 local RecipeMaker = {}
 
--- A frame object provided by MediaWiki when invoking a module.<br>
--- See [Official MediaWiki doc on frame objects](https://www.mediawiki.org/wiki/Extension:Scribunto/Lua_reference_manual#Frame_object)
----@class Frame : table
----@field args table Template arguments in the frame passed to the module.
----@field expandTemplate fun(self: Frame, options: {title: string, args: table}): string function to call the titled MediaWiki template with the specified args.
 
--- A single recipe with one product, one grade, and one stack; possibly in more than one building.
----@class Recipe : table
----@field private buildingArray BuildingID[] The ID codes of buildings that can make this recipe.
----@field private grade integer How many efficiency stars (0-3) the recipe has.
----@field private time number Seconds to produce one product.
----@field private productID ProductID The ID code of what is produced.
----@field private isService boolean `true` if this recipe offers a service instead of a product.
----@field private productStackSize integer Quantity of goods produced each cycle.
----@field private ingredientsArray IngredientsArray Several ingredients slots of several options each.
----@field public new fun(buildingArray: BuildingID[], grade: integer, time: number, productID, ProductID, isService: boolean, productStackSize: integer, ingredientsArray: IngredientsArray): Recipe Constructor.
----@field public getNumIngredients fun(self: Recipe): integer Gets the number of slots in `ingredientsArray`
 
--- Array of (usually 1-2, can be 0 or 3) ingredient slots to make the recipe.
----@alias IngredientsArray IngredientSlot[]
--- Array of (usually 1-6, can be 8) interchangeable options for one ingredient slot in a recipe.
----@alias IngredientSlot IngredientOption[]
--- One acceptable option of good to use in the recipe.
----@alias IngredientOption {id: GoodID, amount: integer}
-
--- Recipes sorted by [productID][grade][stackSize].
----@alias RecipeList table<ProductID, RecipeSublistByGrade>
--- Subset of recipes sorted by [grade][stackSize].
----@alias RecipeSublistByGrade table<integer, RecipeSublistByStacksize>
--- Subsubset of recipes sorted by [stackSize].
----@alias RecipeSublistByStacksize table<integer, Recipe>
-
--- The ID code of a building that makes a recipe.
----@alias BuildingID string
--- The ID code of a good or service made by a recipe.
----@alias ProductID string
--- The ID code of a good.
----@alias GoodID string
 
 
 
 --region dependencies
+
+---@module 'Recipe'
+local Recipe = require("Module:Recipe")
 
 local BuildingDataProxy = require("Module:BuildingDataProxy")
 
@@ -70,128 +37,6 @@ local VIEW_BUILDING_LINK = "Building_link/view"
 local VIEW_RESOURCE_LINK = "Resource_link/view"
 --This doesn't use the view version because we don't want to hardcode the icon filename.
 local TEMPLATE_SERVICE_LINK = "Service_link"
-
---endregion
-
-
-
---region package-private class
-
----@class Recipe
-local Recipe = {}
-
--- Constructs a new Recipe object with the provided data.
----@param buildingArray BuildingID[] array of building IDs where this recipe appears
----@param grade integer between 0 and 3
----@param time number in seconds
----@param productID ProductID the ID of the product or service made by this recipe
----@param isService boolean `true` if this recipe produces a service instead of a good
----@param productStackSize integer how many products are made by this recipe
----@param ingredientsArray IngredientsArray array of slots (1-3), each an array of options (1-8)
----@return Recipe # the new Recipe object
----@package
-function Recipe.new(buildingArray, grade, time, isService, productID, productStackSize, ingredientsArray)
-
-	---@type Recipe
-	local instance = {
-		buildingArray = buildingArray,
-		grade = grade,
-		time = time,
-		productID = productID,
-		isService = isService or false,
-		productStackSize = productStackSize,
-		ingredientsArray = ingredientsArray
-	}
-	-- Allow this instance to use Recipe class methods.
-	setmetatable(instance, { __index = Recipe} )
-
-	-- Perform error checking.
-	-- These would all be due to coding errors, not template use errors facing wiki authors, so these messages are not extracted as internationalizable strings.
-
-	if not buildingArray or #buildingArray < 1 then
-		error("[RecipeMaker/Recipe] constructor got empty array of building IDs")
-	end
-
-	if not grade then
-		error("[RecipeMaker/Recipe] constructor got empty grade")
-	elseif grade > 4 or grade < 0 then
-		error ("[RecipeMaker/Recipe] constructor got invalid grade number")
-	end
-
-	if not time then
-		error ("[RecipeMaker/Recipe] constructor got empty time")
-	elseif time < 0 then
-		error ("[RecipeMaker/Recipe] constructor got invalid time number")
-	end
-
-	if not productID or productID == "" then
-		error ("[RecipeMaker/Recipe] constructor got empty product ID")
-	end
-
-	if not productStackSize then
-		error("[RecipeMaker/Recipe] constructor got empty amount")
-	elseif productStackSize < 1 then
-		error("[RecipeMaker/Recipe] constructor got invalid amount number")
-	end
-
-	if not ingredientsArray then
-		error("[RecipeMaker/Recipe] constructor got empty ingredients array")
-	elseif #ingredientsArray > 3 then
-		error("[RecipeMaker/Recipe] constructor got ingredients array larger than 3 slots")
-	end
-
-	for i, optionsArray in ipairs(ingredientsArray) do
-		if not optionsArray or #optionsArray < 1 then
-			error("[RecipeMaker/Recipe] constructor got empty slot at index " .. i)
-		end
-		if #optionsArray > 8 then
-			error("[RecipeMaker/Recipe] constructor got options array larger than 8 at index " .. i)
-		end
-		for j, option in ipairs(optionsArray) do
-			if not option then
-				error("[RecipeMaker/Recipe] constructor got empty option at index " .. i .. ", " .. j)
-			end
-			if not option.id or option.id == "" then
-				error("[RecipeMaker/Recipe] constructor got empty option ID at index " .. i .. ", " .. j)
-			end
-			if not option.amount then
-				error("[RecipeMaker/Recipe] constructor got empty option amount at index " .. i .. ", " .. j)
-			end
-			if option.amount < 1 then
-				error("[RecipeMaker/Recipe] constructor got invalid option amount at index" .. i .. ", " .. j)
-			end
-		end
-	end
-
-	return instance
-end
-
--- Adds the specified building to this Recipe's list where the recipe is made.<br>
--- This is useful for when consolidating recipes across buildings.
----@param newBuildingID BuildingID the ID code of the building to add to the Recipe
----@return Recipe # the same Recipe object
----@package
-function Recipe:addBuilding(newBuildingID)
-	if not self.buildingArray then
-		self.buildingArray = { newBuildingID }
-	else
-		-- Skip duplicates. It shouldn't happen in 99% of cases, but just to be sure.
-		for _, existingBuildingID in ipairs(self.buildingArray) do
-			if existingBuildingID == newBuildingID then
-				return self
-			end
-		end
-		table.insert(self.buildingArray, newBuildingID)
-	end
-	return self
-end
-
--- Gets the number of ingredient slots (between 0-3).
----@return integer
----@package
-function Recipe:getNumIngredients()
-	return #self.ingredientsArray
-end
 
 --endregion
 
@@ -391,7 +236,7 @@ local function getRecipesFromAllDataModels(requiredProduct, requiredBuilding, re
 			productID = requiredProduct
 		end
 	end
-
+	
 	if requiredBuilding then
 		buildingID = BuildingDataProxy.getID(requiredBuilding)
 	end
