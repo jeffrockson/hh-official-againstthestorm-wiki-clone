@@ -1,3 +1,11 @@
+# local scripts
+#mediawiki_client.py
+#upload_module.py
+
+# python
+__pycache__
+__pycache__/*
+
 # --- MediaWiki directories ---
 cache/
 docs/
