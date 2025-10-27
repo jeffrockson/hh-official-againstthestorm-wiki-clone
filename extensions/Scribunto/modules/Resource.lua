@@ -82,7 +82,8 @@ end
 function Resource.resourceLink(resource, iconSize, needsIcon, needsText)
   local wikitext = ""
   if needsIcon then
-    wikitext = wikitext .. classes(icon(resource._iconFilename, iconSize, resource._displayName, resource._displayName), "ats-link-resource")
+    local sizeN = tonumber(iconSize:match("^x(%d+)px$"))
+    wikitext = wikitext .. classes(icon(resource._iconFilename, iconSize, resource._displayName, resource._displayName), "ats-link-resource", sizeN and sizeN < 23 and "ats-flag-small" or nil)
   end
   if needsIcon and needsText then
     wikitext = wikitext .. NBSP
