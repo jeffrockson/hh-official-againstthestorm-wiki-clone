@@ -16,7 +16,11 @@
 -- The name of a file, including its extension, but not its full path.
 ---@alias Filename string
 
+-- MediaWiki wikitext markup.
+---@alias Wikitext string
 
 
 -- TODO
 ---@alias EffectID string
+
+

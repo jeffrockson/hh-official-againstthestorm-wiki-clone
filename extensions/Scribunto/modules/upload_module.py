@@ -61,18 +61,10 @@ Examples:
         password=args.password
     )
     
-    # Test connection
-    if not client.test_connection():
-        print("Error: Could not connect to MediaWiki API.")
-        sys.exit(1)
-    
     # Authenticate if credentials provided
-    if args.username and args.password:
-        if not client.authenticate():
-            print("Error: Authentication failed.")
-            sys.exit(1)
-    else:
+    if not args.username or not args.password:
         print("Warning: No credentials provided. Upload may fail if authentication is required.")
+        sys.exit(1)
     
     # Upload the content
     summary = f"Uploaded {file_path.name} via upload_module.py"

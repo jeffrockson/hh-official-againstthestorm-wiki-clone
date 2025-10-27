@@ -89,9 +89,7 @@
   "emeraldwalk.runonsave": {
     "commands": [
       {
-        // Run whenever html, css, or js files are saved
         "match": "\\.lua$",
-        "isAsync": true,
         "cmd": "python ${workspaceFolder}/extensions/scribunto/modules/upload_module.py ${file} -u Aeredor -p O%#59Vgd#70F6cD7#@"
       }
     ]
