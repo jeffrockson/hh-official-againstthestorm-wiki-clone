@@ -2,7 +2,7 @@
 local Recipe = {}
 
 -- A single recipe with one product, one grade, and one stack; possibly in more than one building.
----@class Recipe : table
+---@class Recipe
 ---@field package _buildings BuildingID[] The ID codes of buildings that can make this recipe.
 ---@field package _grade Grade How many efficiency stars (0-3) the recipe has.
 ---@field package _time number Seconds to produce one product.
@@ -17,12 +17,12 @@ local Recipe = {}
 ---@alias IngredientOption {_id: ResourceID, _amount: integer}
 
 -- Recipes sorted by [productID][grade][stackSize].
----@alias RecipeList table<ProductID, RecipeSublistByGrade>
+---@alias RecipeCatalog table<ProductID, RecipeListByGrade>
 -- Subset of recipes sorted by [grade][stackSize] (sparse: only existing grades present).<br>
 -- Use `pairs()` to iterate, not `ipairs()`.<br>
 -- For sorting, extract keys, then sort, then iterate.
----@alias RecipeSublistByGrade table<integer, RecipeSublistByStacksize>
--- Subsubset of recipes sorted by [stackSize] (sparse: only existing grades present).<br>
+---@alias RecipeListByGrade table<Grade, RecipeSublistByStacksize>
+-- Subsubset of recipes sorted by [stackSize] (sparse: only existing stack sizes present).<br>
 -- Use `pairs()` to iterate, not `ipairs()`.<br>
 -- For sorting, extract keys, then sort, then iterate.
 ---@alias RecipeSublistByStacksize table<integer, Recipe>
@@ -34,7 +34,7 @@ local Recipe = {}
 ---@alias ExtraProductChance {_id: ProductID, _amount: integer, _chance: number}
 
 -- The ID of a good or service produced.
----@alias ProductID string
+---@alias ProductID ResourceID
 
 -- A number 0, 1, 2, or 3 (worst to best) of a recipe indicating its efficiency, effectiveness, or capability.
 ---@alias Grade 0|1|2|3
