@@ -84,17 +84,184 @@ local CATEGORY_DISPLAY = { -- for all buildings from...
 -- The affinity of the building for different species. Probably should be separated into its own module.
 ---@enum Specialization
 local SPECIALIZATION = {
-  "Alchemy",
-  "Animals",
-  "Brewing",
-  "Cloth",
-  "Farming",
-  "FoxesCooperation",
-  "Metallurgy",
-  "Rainwater",
-  "Stone",
-  "Tech",
-  "Warmth",
-  "Wood"
+  Alchemy = "Alchemy",
+  Animals = "Animals",
+  Brewing = "Brewing",
+  Cooperation = "FoxesCooperation",
+  Engineering = "Tech",
+  Farming = "Farming",
+  Forest = "Forest",
+  Masonry = "Stone",
+  Metallurgy = "Metallurgy",
+  Rainwater = "Rainwater",
+  Tailoring = "Cloth",
+  Warmth = "Warmth",
+  Woodworking = "Woodworking",
 }
 
+--#region Dependencies
+
+-- List of data filenames, in order of likelihood of use.
+local BUILDING_DATA_FILES = {
+  "Module:Workshop/workshops_data",
+  "Module:ServiceBuilding/service_buildings_data",
+  "Module:Farm/farms_data",
+  "Module:Camp/gathering_huts_data",
+  "Module:Camp/camps_data",
+  "Module:House/houses_data",
+  "Module:FishingHut/fishing_huts_data",
+  "Module:Mine/mines_data",
+  "Module:BlightPost/blight_posts_data",
+  "Module:RainCollector/rain_collectors_data",
+  "Module:Pump/pumps_data",
+  "Module:Hearth/hearths_data",
+  "Module:Warehouse/warehouses_data",
+  "Module:Farm/farm_fields_data",
+  "Module:Glade/glade_events_data",
+}
+
+local Wiki_Utility = require("Module:Wiki_Utility")
+local icon = Wiki_Utility.renderIcon
+local nowrap = Wiki_Utility.surroundWithNoWrap
+local classes = Wiki_Utility.surroundWithClasses
+local link = Wiki_Utility.renderWikiLink
+local NBSP = Wiki_Utility.NBSP
+local standards = Wiki_Utility.StandardizedSizes
+local isValidIconSize = Wiki_Utility.isValidIconSize
+
+--#endregion Dependencies
+
+--#region Constants
+
+local MIN_ICON_SIZE = 20
+
+--#endregion Constants
+
+--#region Private Members
+
+---@type table<BuildingID, Building>
+local buildingData
+---@type table<string, BuildingID>
+local mapNamesToIDs
+
+-- Loads the building data from the data files in sequence.<br>
+-- Also populates the map of display names to IDs.<br>
+-- I attempted to do this by lazy loading, but it would have required stateful code that would have been a lot more difficult to understand, troubleshoot, and maintain. If there is a noticeable performance issue, that would be a good first place to start.
+---@return table<BuildingID, Building> buildingData
+---@return table<string, BuildingID> mapNamesToIDs
+local function data()
+  if not buildingData then
+    buildingData = {}
+    mapNamesToIDs = {}
+    for _, datafile in ipairs(BUILDING_DATA_FILES) do
+      local dataTable = mw.loadData(datafile)
+      for id, building in pairs(dataTable) do
+        buildingData[id] = building
+        mapNamesToIDs[building._displayName] = id
+      end
+    end
+  end
+  return buildingData, mapNamesToIDs
+end
+
+-- Finds a building by its display name.
+---@param buildingName string display name of the building
+---@return Building|nil foundBuilding
+local function findName(buildingName)
+  data()
+  local foundID = mapNamesToIDs[buildingName]
+  return foundID and buildingData[foundID]
+end
+
+-- Renders a link to the given building's wiki page.<br>
+-- The size of the icon will be used as the *height* of the icon.<br>
+-- If the specified iconSize is too small, the icon will be ommitted instead of drawn so small as to be unrecognizable.
+---@param building Building must not be nil
+---@param iconSize string size of the icon including any units, e.g., `20em` or `x16px` or assumes `px` if no units
+---@param needsIcon boolean
+---@param needsText boolean
+---@param needsPlural boolean
+---@param pluralForm string|nil the plural form specified by the author, or nil if `needsPlural` is false
+---@return Wikitext wikitext
+function Building.buildingLink(building, iconSize, needsIcon, needsText, needsPlural, pluralForm)
+  local wikitext = ""
+  local isValidSize, sizeN = isValidIconSize(iconSize)
+  if needsIcon and isValidSize and sizeN >= MIN_ICON_SIZE then
+    -- Make it a height if it's not already.
+    if not iconSize:match("^x") then
+      iconSize = "x" .. iconSize
+    end
+    wikitext = wikitext .. classes(icon(building._iconFilename, iconSize, building._displayName, building._displayName), "ats-link-building", sizeN and sizeN < 23 and "ats-flag-small" or nil)
+  end
+  if (needsIcon and isValidSize and sizeN >= MIN_ICON_SIZE) and needsText then
+    wikitext = wikitext .. NBSP
+  end
+  if needsText then
+    local displayName = building._displayName
+    if needsPlural then
+      if pluralForm == "s" or pluralForm == "es" then
+        displayName = displayName .. pluralForm
+      else
+        displayName = displayName:gsub("y$", "ies")
+      end
+    end
+    wikitext = wikitext .. link(building._displayName, displayName)
+  end
+  return nowrap(wikitext)
+end
+
+-- Looks at the arguments to the original template to see if the author asked for a plural form.
+---@param frame Frame MediaWiki template context
+---@return boolean needsPlural
+---@return string|nil pluralForm the plural form specified by the author
+local function checkPlural(frame)
+  if not frame:getParent() then return false end
+  local parentArgs = frame:getParent().args
+  for _, arg in pairs(parentArgs) do
+    -- All we need is whether one of them is exactly "s" or "es" or "ies".
+    if arg == "s" then return true, arg end
+    if arg == "es" then return true, arg end
+    if arg == "ies" then return true, arg end
+  end
+  return false
+end
+
+--#endregion Private Members
+
+--#region Public Methods
+
+-- Building_link template invokes this method from MediaWiki.
+---@param frame Frame MediaWiki template context
+---@return Wikitext wikitext wikitext markup to link to the building's wiki page
+function Building.link(frame)
+  local name = frame.args.name or ""
+  if name == "" then
+    return "[Building Link needs building name]"
+  end
+  local iconSize = standards[frame.args.icon] or frame.args.icon or ""
+  local needsIcon = iconSize ~= "none"
+  -- If one of these was assigned into icon arg it was meant as the plural arg.
+  -- Unset needsIcon because buildings get no icon by default.
+  if iconSize == "s" or iconSize == "es" or iconSize == "ies" then
+    needsIcon = false
+  end
+  -- Check if the size string is valid and doesn't represent a negative or too-large number.
+  if needsIcon and not isValidIconSize(iconSize) then
+    return "[Building Link size not valid: " .. iconSize .. "]"
+  end
+  local display = frame.args.display or ""
+  if display ~= "" and display ~= "notext" then
+    return "[Building Link display override not supported: " .. display .. "]"
+  end
+  local needsText = display ~= "notext"
+  local needsPlural, pluralForm = checkPlural(frame)
+  local building = findName(name)
+  if not building then
+    return "[Building not found: " .. name .. "]"
+  end
+  return Building.buildingLink(building, iconSize, needsIcon, needsText, needsPlural, pluralForm)
+end
+
+--#endregion Public Methods
+
+return Building

@@ -4,6 +4,13 @@ local Wiki_Utility = {}
 -- The non-breaking space character.
 Wiki_Utility.NBSP = "&nbsp;"
 
+Wiki_Utility.StandardizedSizes = {
+  ["small"] = "x16px",
+  ["medium"] = "x30px",
+  ["large"] = "x60px",
+  ["huge"] = "x84px"
+}
+
 -- Surrounds the given wikitext with no-wrap tags.
 ---@param wikitext Wikitext wikitext to surround
 ---@return Wikitext wikitext same wikitext, surrounded with no-wrap tags
@@ -17,6 +24,15 @@ end
 ---@return Wikitext wikitext same wikitext, surrounded with the given classes
 function Wiki_Utility.surroundWithClasses(wikitext, ...)
   return "<span class=\"" .. table.concat({...}, " ") .. "\">" .. wikitext .. "</span>"
+end
+
+-- Checks if the given icon size is valid, both as a number and within usable bounds as an icon.
+---@param iconSize string size of the icon including units, e.g., "20em" or "x16px"
+---@return boolean # `true` if the size string is a valid size
+---@return number|nil sizeN the number part of the specified size
+function Wiki_Utility.isValidIconSize(iconSize)
+  local sizeN = tonumber(iconSize:match("^x?(%d+)"))
+  return sizeN and sizeN >= 0 and sizeN <= 300 or false, sizeN
 end
 
 -- Renders an icon with the given filename, size, link, and alt text.

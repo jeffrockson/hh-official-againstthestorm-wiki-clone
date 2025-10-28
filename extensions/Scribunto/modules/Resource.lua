@@ -35,6 +35,7 @@ local CATEGORY_RESOURCE = {
 
 --#region Dependencies
 
+local RESOURCES_DATA_FILE = "Module:Resource/resources_data"
 
 local Wiki_Utility = require("Module:Wiki_Utility")
 local icon = Wiki_Utility.renderIcon
@@ -42,18 +43,30 @@ local nowrap = Wiki_Utility.surroundWithNoWrap
 local classes = Wiki_Utility.surroundWithClasses
 local link = Wiki_Utility.renderWikiLink
 local NBSP = Wiki_Utility.NBSP
+local standards = Wiki_Utility.StandardizedSizes
+local isValidIconSize = Wiki_Utility.isValidIconSize
 
 --#endregion Dependencies
+
+--#region Constants
+
+local MIN_ICON_SIZE = 16
+
+--#endregion Constants
 
 --#region Private Members
 
 ---@type Resource[]
 local resourceData = nil
-
+local mapNamesToIDs = nil
 
 local function data()
   if not resourceData then
-    resourceData = mw.loadData("Module:Resource/resources_data")
+    mapNamesToIDs = {}
+    resourceData = mw.loadData(RESOURCES_DATA_FILE)
+    for id, building in pairs(resourceData) do
+      mapNamesToIDs[building._displayName] = id
+    end
   end
   return resourceData
 end
@@ -72,20 +85,24 @@ local function findName(resourceName)
   return foundResource
 end
 
--- Renders a link to the given resource's wiki page.
+-- Renders a link to the given resource's wiki page.<br>
+-- If the specified iconSize is too small, the icon will be ommitted instead of drawn so small as to be unrecognizable.
 ---@param resource Resource must not be nil
 ---@param iconSize string size of the icon including units, e.g., "x16px"
 ---@param needsIcon boolean
 ---@param needsText boolean
 ---@return Wikitext wikitext
----@private
 function Resource.resourceLink(resource, iconSize, needsIcon, needsText)
   local wikitext = ""
-  if needsIcon then
-    local sizeN = tonumber(iconSize:match("^x(%d+)px$"))
+  local isValidSize, sizeN = isValidIconSize(iconSize)
+  if needsIcon and isValidSize and sizeN >= MIN_ICON_SIZE then
+    -- Make it a height if it's not already.
+    if not iconSize:match("^x") then
+      iconSize = "x" .. iconSize
+    end
     wikitext = wikitext .. classes(icon(resource._iconFilename, iconSize, resource._displayName, resource._displayName), "ats-link-resource", sizeN and sizeN < 23 and "ats-flag-small" or nil)
   end
-  if needsIcon and needsText then
+  if (needsIcon and isValidSize and sizeN >= MIN_ICON_SIZE) and needsText then
     wikitext = wikitext .. NBSP
   end
   if needsText then
@@ -106,15 +123,10 @@ function Resource.link(frame)
   if name == "" then
     return "[Resource Link needs resource name]"
   end
-  local standardizedSizes = {
-    ["small"] = "x16px",
-    ["medium"] = "x30px",
-    ["large"] = "x60px",
-    ["huge"] = "x84px"
-  }
-  local iconSize = standardizedSizes[frame.args.icon] or frame.args.icon or ""
+  local iconSize = standards[frame.args.icon] or frame.args.icon or ""
   local needsIcon = iconSize ~= "none"
-  if needsIcon and not iconSize:match("^x[0-9]+px$") then
+  -- Check if the size string is valid and doesn't represent a negative or too-large number.
+  if needsIcon and not isValidIconSize(iconSize) then
     return "[Resource Link size not valid: " .. iconSize .. "]"
   end
   local display = frame.args.display or ""
