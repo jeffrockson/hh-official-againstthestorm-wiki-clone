@@ -67,3 +67,20 @@ extensions/Scribunto/modules/ext.scribunto.logs.css
 csrftoken.txt
 apilogin.json
 .env
+
+# --- Data files ---
+Biome/
+BlightPost/
+Camp/
+Deposit/
+Farm/
+FishingHut/
+Hearth/
+House/
+Mine/
+Pump/
+RainCollector/
+Resource/
+ServiceBuilding/
+Warehouse/
+Workshop/

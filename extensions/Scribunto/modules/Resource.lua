@@ -33,6 +33,8 @@ local CATEGORY_RESOURCE = {
   Trade = "Trade Goods"
 }
 
+
+
 --#region Dependencies
 
 local RESOURCES_DATA_FILE = "Module:Resource/resources_data"
@@ -48,11 +50,15 @@ local isValidIconSize = Wiki_Utility.isValidIconSize
 
 --#endregion Dependencies
 
+
+
 --#region Constants
 
 local MIN_ICON_SIZE = 16
 
 --#endregion Constants
+
+
 
 --#region Private Members
 
@@ -113,6 +119,8 @@ end
 
 --#endregion Private Methods
 
+
+
 --#region Public Methods
 
 -- Resource_link template invokes this method from MediaWiki.
@@ -142,5 +150,7 @@ function Resource.link(frame)
 end
 
 --#endregion Public Methods
+
+
 
 return Resource
