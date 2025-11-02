@@ -8,7 +8,7 @@
       "name": "Debug MediaWiki Lua Module",
       "type": "lua",
       "request": "launch",
-      "program": "${file}",
+      "program": "test_script.lua",
       "stopOnEntry": false,
       "env": {
         "MW_PATH": "C:/tools/mediawiki-1.44.2",

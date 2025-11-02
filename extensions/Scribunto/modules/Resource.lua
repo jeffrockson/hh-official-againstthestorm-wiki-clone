@@ -20,11 +20,13 @@ local Resource = {}
 -- Currency in-game.
 ---@alias Amber number
 
+-- The ID and amount of a good or service.
+---@alias ResourcePair {_id: ResourceID, _amount: integer}
+
 -- The resource category based on the info bar.<br>
 -- Metaresources are categorized with trade goods.
 ---@enum CategoryResource
 local CATEGORY_RESOURCE = {
-  -- Resources in the info bar.
   Building = "Building Materials",
   Consumable = "Consumable Items",
   Crafting = "Crafting Resources",
@@ -42,7 +44,7 @@ local RESOURCES_DATA_FILE = "Module:Resource/resources_data"
 local Wiki_Utility = require("Module:Wiki_Utility")
 local icon = Wiki_Utility.renderIcon
 local nowrap = Wiki_Utility.surroundWithNoWrap
-local classes = Wiki_Utility.surroundWithClasses
+local wrapClasses = Wiki_Utility.surroundWithClasses
 local link = Wiki_Utility.renderWikiLink
 local NBSP = Wiki_Utility.NBSP
 local standards = Wiki_Utility.StandardizedSizes
@@ -63,8 +65,9 @@ local MIN_ICON_SIZE = 16
 --#region Private Members
 
 ---@type Resource[]
-local resourceData = nil
-local mapNamesToIDs = nil
+local resourceData
+---@type table<string, ResourceID>
+local mapNamesToIDs
 
 local function data()
   if not resourceData then
@@ -94,11 +97,14 @@ end
 -- Renders a link to the given resource's wiki page.<br>
 -- If the specified iconSize is too small, the icon will be ommitted instead of drawn so small as to be unrecognizable.
 ---@param resource Resource must not be nil
----@param iconSize string size of the icon including units, e.g., "x16px"
----@param needsIcon boolean
----@param needsText boolean
+---@param iconSize string|nil size of the icon including units, e.g., "x16px", or nil for default
+---@param needsIcon boolean|nil or nil for default
+---@param needsText boolean|nil or nil for default
 ---@return Wikitext wikitext
-function Resource.resourceLink(resource, iconSize, needsIcon, needsText)
+local function resourceLink(resource, iconSize, needsIcon, needsText)
+  iconSize = iconSize or standards.small
+  needsIcon = needsIcon or (needsIcon == nil and true)
+  needsText = needsText or (needsText == nil and true)
   local wikitext = ""
   local isValidSize, sizeN = isValidIconSize(iconSize)
   if needsIcon and isValidSize and sizeN >= MIN_ICON_SIZE then
@@ -106,7 +112,7 @@ function Resource.resourceLink(resource, iconSize, needsIcon, needsText)
     if not iconSize:match("^x") then
       iconSize = "x" .. iconSize
     end
-    wikitext = wikitext .. classes(icon(resource._iconFilename, iconSize, resource._displayName, resource._displayName), "ats-link-resource", sizeN and sizeN < 23 and "ats-flag-small" or nil)
+    wikitext = wikitext .. wrapClasses(icon(resource._iconFilename, iconSize, resource._displayName, resource._displayName), "ats-link-resource", sizeN and sizeN < 23 and "ats-flag-small" or nil)
   end
   if (needsIcon and isValidSize and sizeN >= MIN_ICON_SIZE) and needsText then
     wikitext = wikitext .. NBSP
@@ -122,6 +128,48 @@ end
 
 
 --#region Public Methods
+
+-- Checks if the given ID is a valid resource ID.
+---@param id ResourceID
+---@return boolean
+function Resource.isGood(id)
+  return data()[id] ~= nil
+end
+
+-- Finds a resource's ID by its display name.
+---@param displayName string
+---@return ResourceID|nil
+function Resource.getID(displayName)
+  data()
+  return mapNamesToIDs[displayName]
+end
+
+-- Renders a table of pairs of resource IDs and amounts.
+---@param pairsList ResourcePair[] array of pairs of resource IDs and amounts
+---@vararg string additional classes to add to the table, if any
+---@return Wikitext wikitext
+function Resource.tableStack(pairsList, ...)
+  local classes = {...}
+  local wikitext = "{|" .. ((#classes > 0) and ("class=" .. table.concat(classes, " ")) or "") .. "\n"
+  for _, pair in ipairs(pairsList) do
+    local resource = data()[pair._id]
+    if not resource then return "[Resource table stack ID not found: " .. pair._id .. "]" end
+    wikitext = wikitext .. "|-\n"
+    wikitext = wikitext .. "| " .. pair._amount .. "\n"
+    wikitext = wikitext .. "|style=\"text-align:left;\"| " .. resourceLink(resource, standards.medium, true, true) .. "\n"
+  end
+  return wikitext .. "|}"
+end
+
+-- Renders a link to the given resource's wiki page by its ID.
+---@param resourceID ResourceID
+---@param iconSize string size of the icon including units, e.g., "x16px"
+---@param needsIcon boolean
+---@param needsText boolean
+---@return Wikitext wikitext
+function Resource.resourceLinkByID(resourceID, iconSize, needsIcon, needsText)
+  return resourceLink(data()[resourceID], iconSize, needsIcon, needsText)
+end
 
 -- Resource_link template invokes this method from MediaWiki.
 ---@param frame Frame MediaWiki template context
@@ -146,7 +194,7 @@ function Resource.link(frame)
   if not resource then
     return "[Resource not found: " .. name .. "]"
   end
-  return Resource.resourceLink(resource, iconSize, needsIcon, needsText)
+  return resourceLink(resource, iconSize, needsIcon, needsText)
 end
 
 --#endregion Public Methods

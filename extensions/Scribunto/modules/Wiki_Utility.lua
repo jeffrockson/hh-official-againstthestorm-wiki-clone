@@ -1,14 +1,22 @@
 -- Defines some utility functions for working with, among other things, mw library functions.
 local Wiki_Utility = {}
 
+
 -- The non-breaking space character.
 Wiki_Utility.NBSP = "&nbsp;"
 
 Wiki_Utility.StandardizedSizes = {
-  ["small"] = "x16px",
+  ["small"] = "x18px",
   ["medium"] = "x30px",
-  ["large"] = "x60px",
-  ["huge"] = "x84px"
+  ["large"] = "x54px",
+  ["huge"] = "x72px"
+}
+
+Wiki_Utility.GradeStars = {
+  [0] = "&star;",
+  [1] = "&starf;",
+  [2] = "&starf;&starf;",
+  [3] = "&starf;&starf;&starf;"
 }
 
 -- Surrounds the given wikitext with no-wrap tags.
@@ -20,10 +28,18 @@ end
 
 -- Surrounds the given wikitext with the given classes.
 ---@param wikitext Wikitext wikitext to surround
----@param ... string classes to surround the wikitext with
+---@vararg string classes to surround the wikitext with
 ---@return Wikitext wikitext same wikitext, surrounded with the given classes
 function Wiki_Utility.surroundWithClasses(wikitext, ...)
   return "<span class=\"" .. table.concat({...}, " ") .. "\">" .. wikitext .. "</span>"
+end
+
+-- Surrounds the given wikitext with a div with the given classes.
+---@param wikitext Wikitext wikitext to surround
+---@vararg string classes to surround the wikitext with
+---@return Wikitext wikitext same wikitext, surrounded with a new div
+function Wiki_Utility.surroundWithDiv(wikitext, ...)
+  return "<div class=\"" .. table.concat({...}, " ") .. "\">" .. wikitext .. "</div>"
 end
 
 -- Checks if the given icon size is valid, both as a number and within usable bounds as an icon.

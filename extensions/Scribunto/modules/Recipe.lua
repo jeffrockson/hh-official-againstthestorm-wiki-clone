@@ -1,4 +1,4 @@
--- Interface to Recipe static methods.
+-- Provides a standard way of interacting with recipe data.
 local Recipe = {}
 
 -- A single recipe with one product, one grade, and one stack; possibly in more than one building.
@@ -14,10 +14,10 @@ local Recipe = {}
 -- Array of (usually 1-6, can be 8) interchangeable options for one ingredient slot in a recipe.
 ---@alias IngredientSlot IngredientOption[]
 -- One acceptable option of good to use in the recipe.
----@alias IngredientOption {_id: ResourceID, _amount: integer}
+---@alias IngredientOption ResourcePair
 
 -- Recipes sorted by [productID][grade][stackSize].
----@alias RecipeCatalog table<ProductID, RecipeListByGrade>
+---@alias RecipeBook table<ProductID, RecipeListByGrade>
 -- Subset of recipes sorted by [grade][stackSize] (sparse: only existing grades present).<br>
 -- Use `pairs()` to iterate, not `ipairs()`.<br>
 -- For sorting, extract keys, then sort, then iterate.
@@ -28,7 +28,7 @@ local Recipe = {}
 ---@alias RecipeSublistByStacksize table<integer, Recipe>
 
 -- The ID and amount of a good or service made.
----@alias ProductPair {_id: ProductID, _amount: integer}
+---@alias ProductPair ResourcePair
 
 -- The ID, amount, and probability of an extra product.
 ---@alias ExtraProductChance {_id: ProductID, _amount: integer, _chance: number}
@@ -41,119 +41,117 @@ local Recipe = {}
 
 
 
+--#region Public Methods
 
-
--- Constructs a new Recipe object with the provided data after running some error checking.
----@param buildingArray BuildingID[] array of building IDs where this recipe appears
----@param grade integer between 0 and 3
----@param time number in seconds
----@param productID ProductID the ID of the product or service made by this recipe
----@param isService boolean `true` if this recipe produces a service instead of a good
----@param productStackSize integer how many products are made by this recipe
----@param ingredientArray IngredientSlot[] array of slots (1-3), each an array of options (1-8)
----@return Recipe # the new Recipe object
-function Recipe.new(buildingArray, grade, time, isService, productID, productStackSize, ingredientArray)
-
-	-- Perform error checking.
-	-- These would all be due to coding errors, not template use errors facing wiki authors.
-	-- Therefore these messages are not extracted as strings for i18n.
-
-	if not buildingArray or #buildingArray < 1 then
-		error("[RecipeMaker/Recipe] constructor got empty array of building IDs")
-	end
-
-	if not grade then
-		error("[RecipeMaker/Recipe] constructor got empty grade")
-	elseif grade > 4 or grade < 0 then
-		error ("[RecipeMaker/Recipe] constructor got invalid grade number")
-	end
-
-	if not time then
-		error ("[RecipeMaker/Recipe] constructor got empty time")
-	elseif time < 0 then
-		error ("[RecipeMaker/Recipe] constructor got invalid time number")
-	end
-
-	if not productID or productID == "" then
-		error ("[RecipeMaker/Recipe] constructor got empty product ID")
-	end
-
-	if not productStackSize then
-		error("[RecipeMaker/Recipe] constructor got empty amount")
-	elseif productStackSize < 1 then
-		error("[RecipeMaker/Recipe] constructor got invalid amount number")
-	end
-
-	if not ingredientArray then
-		error("[RecipeMaker/Recipe] constructor got empty ingredients array")
-	elseif #ingredientArray > 3 then
-		error("[RecipeMaker/Recipe] constructor got ingredients array larger than 3 slots")
-	end
-
-	for i, optionsArray in ipairs(ingredientArray) do
-		if not optionsArray or #optionsArray < 1 then
-			error("[RecipeMaker/Recipe] constructor got empty slot at index " .. i)
-		end
-		if #optionsArray > 8 then
-			error("[RecipeMaker/Recipe] constructor got options array larger than 8 at index " .. i)
-		end
-		for j, option in ipairs(optionsArray) do
-			if not option then
-				error("[RecipeMaker/Recipe] constructor got empty option at index " .. i .. ", " .. j)
-			end
-			if not option._id or option._id == "" then
-				error("[RecipeMaker/Recipe] constructor got empty option ID at index " .. i .. ", " .. j)
-			end
-			if not option._amount then
-				error("[RecipeMaker/Recipe] constructor got empty option amount at index " .. i .. ", " .. j)
-			end
-			if option._amount < 1 then
-				error("[RecipeMaker/Recipe] constructor got invalid option amount at index" .. i .. ", " .. j)
-			end
-		end
-	end
-
-  ---@type Recipe
-	return {
-		_buildings = buildingArray,
-		_grade = grade,
-		_time = time,
-		_productPair = {_id = productID, _amount = productStackSize},
-		_isService = isService or false,
-		_ingredients = ingredientArray
-	}
-
+-- Adds the given building ID to the recipe's list of buildings that can make it.
+---@param recipe Recipe
+---@param buildingID BuildingID
+---@return BuildingID[] buildings
+function Recipe.addBuilding(recipe, buildingID)
+	table.insert(recipe._buildings, buildingID)
+	return recipe._buildings
 end
 
-
-
--- Adds the specified building to this Recipe's list where the recipe is made.<br>
--- This is useful for when consolidating recipes across buildings.
----@param recipe Recipe the recipe to which to add the building
----@param newBuildingID BuildingID the ID code of the building to add to the Recipe
----@return Recipe # the same Recipe object
-function Recipe.addBuilding(recipe, newBuildingID)
-	if not recipe._buldingArray then
-		recipe._buldingArray = { newBuildingID }
-	else
-		-- Skip duplicates. It shouldn't happen in 99% of cases, but just to be sure.
-		for _, existingBuildingID in ipairs(recipe._buldingArray) do
-			if existingBuildingID == newBuildingID then
-				return recipe
+-- Checks if the given ingredient is anywhere in the recipe's ingredient options.
+---@param recipe Recipe
+---@param ingredientID ResourceID
+---@return boolean
+---@return integer|nil slotIndex
+---@return integer|nil optionIndex
+function Recipe.isIngredientInOptions(recipe, ingredientID)
+	if not recipe then error("Cannot find ingredient in nil recipe") end
+	if not ingredientID then error("Cannot find ingredient using nil ingredientID") end
+	for slotIndex, slot in ipairs(recipe._ingredients) do
+		for optionIndex, option in ipairs(slot) do
+			if option._id == ingredientID then
+				return true, slotIndex, optionIndex
 			end
 		end
-		table.insert(recipe._buldingArray, newBuildingID)
 	end
-	return recipe
+	return false, nil, nil
 end
 
+-- Gets the array of ingredient options for the given slot.
+---@param recipe Recipe
+---@param slotIndex integer
+---@return IngredientOption[]
+function Recipe.getIngredientOptions(recipe, slotIndex)
+	return recipe._ingredients[slotIndex]
+end
 
+-- Gets the ingredient at the given slot and option index, both the ID and amount.
+---@param recipe Recipe
+---@param slotIndex integer
+---@param optionIndex integer
+---@return ResourceID
+---@return integer # amount
+function Recipe.getIngredient(recipe, slotIndex, optionIndex)
+	local ingredientPair = recipe._ingredients[slotIndex][optionIndex]
+	return ingredientPair._id, ingredientPair._amount
+end
 
--- Gets the number of ingredient slots (between 0-3).
----@param recipe Recipe the recipe in question
+-- Gets the product of the recipe, both the ID and amount.
+---@param recipe Recipe
+---@return ProductID
+---@return integer # amount
+function Recipe.getProduct(recipe)
+	return recipe._productPair._id, recipe._productPair._amount
+end
+
+-- Gets the number of ingredient slots in the recipe.
+---@param recipe Recipe
 ---@return integer
-function Recipe:getNumIngredients(recipe)
-	return #recipe._ingredientsArray
+function Recipe.getNumIngredients(recipe)
+	if not recipe._ingredients then
+		error("Recipe.getNumIngredients cannot work with nil array.")
+	end
+	local count = 0
+	for _ in ipairs(recipe._ingredients) do
+		count = count + 1
+	end
+	return count
 end
+
+-- Gets the number of options for the given ingredient slot.
+---@param recipe Recipe
+---@param slotIndex integer
+---@return integer
+function Recipe.getNumOptions(recipe, slotIndex)
+	if not recipe._ingredients then
+		error("Recipe.getNumOptions cannot work with nil array.")
+	end
+	local count = 0
+	for _ in ipairs(recipe._ingredients[slotIndex]) do
+		count = count + 1
+	end
+	return count
+end
+
+-- Gets the array of buildings that can make the recipe.
+---@param recipe Recipe
+---@return BuildingID[]
+function Recipe.getBuildings(recipe)
+	return recipe._buildings
+end
+
+-- Gets the production time of the recipe.
+---@param recipe Recipe
+---@return number
+function Recipe.getTime(recipe)
+	return recipe._time
+end
+
+-- Gets the production time of the recipe in a clock format.
+---@param recipe Recipe
+---@return string # formatted as "M:SS"
+function Recipe.getTimeClock(recipe)
+	local minutes = math.floor((recipe._time or 0) / 60)
+	local seconds = (recipe._time or 0) % 60
+	return string.format("%d:%02d", minutes, seconds)
+end
+
+--#endregion Public Methods
+
+
 
 return Recipe

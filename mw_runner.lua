@@ -30,7 +30,9 @@ package.preload["mw.title"]  = function() return dofile(LUA_LIB_PATH .. "/mw.tit
 package.preload["mw.text"]   = function() return dofile(LUA_LIB_PATH .. "/mw.text.lua") end
 package.preload["mw.html"]   = function() return dofile(LUA_LIB_PATH .. "/mw.html.lua") end
 package.preload["mw.ustring"] = function() return dofile(LUA_LIB_PATH .. "/mw.ustring.lua") end
--- Require the MediaWiki core Lua library
+
+-- MediaWiki core Lua library
+---@diagnostic disable-next-line: lowercase-global
 mw = require("mw")
 mw.title = require("mw.title")
 mw.ustring = require("mw.ustring")

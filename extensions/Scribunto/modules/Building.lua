@@ -22,7 +22,7 @@ local Building = {}
 ---@field _storage? integer Number of goods that can be temporarily stored, if any, before any perks.
 ---@field _waterUsed? WaterID Type of water used in the building, if any.
 ---@field _levels? Level[] List of upgrades, if any.
----@field _recipes? Recipe[] Recipes available, if any.
+---@field _recipes? RecipeBook Recipes available, if any, organized by product, grade, and stack size.
 
 -- A unique identifier for a building.
 ---@alias BuildingID string
@@ -99,6 +99,8 @@ local SPECIALIZATION = {
   Woodworking = "Woodworking",
 }
 
+
+
 --#region Dependencies
 
 -- List of data filenames, in order of likelihood of use.
@@ -116,9 +118,10 @@ local BUILDING_DATA_FILES = {
   "Module:Pump/pumps_data",
   "Module:Hearth/hearths_data",
   "Module:Warehouse/warehouses_data",
-  "Module:Farm/farm_fields_data",
-  "Module:Glade/glade_events_data",
+  "Module:Farm/farm_fields_data"
 }
+
+local Recipe = require("Module:Recipe")
 
 local Wiki_Utility = require("Module:Wiki_Utility")
 local icon = Wiki_Utility.renderIcon
@@ -131,11 +134,15 @@ local isValidIconSize = Wiki_Utility.isValidIconSize
 
 --#endregion Dependencies
 
+
+
 --#region Constants
 
 local MIN_ICON_SIZE = 20
 
 --#endregion Constants
+
+
 
 --#region Private Members
 
@@ -170,25 +177,25 @@ end
 local function findName(buildingName)
   data()
   local foundID = mapNamesToIDs[buildingName]
-  return foundID and buildingData[foundID]
+  return foundID and buildingData[foundID] or nil
 end
 
 -- Renders a link to the given building's wiki page.<br>
 -- The size of the icon will be used as the *height* of the icon.<br>
 -- If the specified iconSize is too small, the icon will be ommitted instead of drawn so small as to be unrecognizable.
 ---@param building Building must not be nil
----@param iconSize string size of the icon including any units, e.g., `20em` or `x16px` or assumes `px` if no units
+---@param iconSize string|nil size of the icon including any units, e.g., `20em` or `x16px` or assumes `px` if no units, or nil if not relevant
 ---@param needsIcon boolean
 ---@param needsText boolean
 ---@param needsPlural boolean
 ---@param pluralForm string|nil the plural form specified by the author, or nil if `needsPlural` is false
 ---@return Wikitext wikitext
-function Building.buildingLink(building, iconSize, needsIcon, needsText, needsPlural, pluralForm)
+local function buildingLink(building, iconSize, needsIcon, needsText, needsPlural, pluralForm)
   local wikitext = ""
   local isValidSize, sizeN = isValidIconSize(iconSize)
   if needsIcon and isValidSize and sizeN >= MIN_ICON_SIZE then
     -- Make it a height if it's not already.
-    if not iconSize:match("^x") then
+    if iconSize and not iconSize:match("^x") then
       iconSize = "x" .. iconSize
     end
     wikitext = wikitext .. classes(icon(building._iconFilename, iconSize, building._displayName, building._displayName), "ats-link-building", sizeN and sizeN < 23 and "ats-flag-small" or nil)
@@ -210,6 +217,99 @@ function Building.buildingLink(building, iconSize, needsIcon, needsText, needsPl
   return nowrap(wikitext)
 end
 
+--#endregion Private Members
+
+
+
+--#region Public Methods
+
+-- Checks if the given ID is a valid building ID.
+---@param id BuildingID
+---@return boolean
+function Building.isBuilding(id)
+  return data()[id] ~= nil
+end
+
+-- Finds a building's ID by its display name.
+---@param displayName string
+---@return BuildingID|nil
+function Building.getID(displayName)
+  data()
+  return mapNamesToIDs[displayName]
+end
+
+-- Retrieves a complete listing of recipes filtered down to those with the required product, building, and ingredient.<br>
+-- If any of the required arguments are nil, then all recipes that match the other arguments will be returned.
+---@param requiredProductID ProductID|nil the ID of the product, or nil if any
+---@param requiredBuildingID BuildingID|nil the ID of the building, or nil if any
+---@param requiredIngredientID ResourceID|nil the ID of the ingredient, or nil if any
+---@return RecipeBook recipeBook
+---@return integer recipeCount number of recipes in the RecipeBook
+---@return integer maxIngredients number of ingredients slots required to represent them all
+---@return integer numBuildings total number of buildings that can make recipes
+function Building.compileRecipeBook(requiredProductID, requiredBuildingID, requiredIngredientID)
+  data()
+  ---@type RecipeBook
+  local recipeBook = {}
+  local recipeCount = 0
+  local maxIngredients = 0
+  local numBuildings = 0
+  for buildingID, building in pairs(buildingData) do
+    -- if no filter on buildings OR match
+    if not requiredBuildingID or buildingID == requiredBuildingID then
+      for productID, recipeListByGrade in pairs(building._recipes) do
+        -- if no filter on product OR match
+        if not requiredProductID or productID == requiredProductID then
+          for grade, recipesByStacksize in pairs(recipeListByGrade) do
+            for stacksize, recipe in pairs(recipesByStacksize) do
+              -- if no filter on ingredient OR match
+              if not requiredIngredientID or Recipe.isIngredientInOptions(recipe, requiredIngredientID) then
+                if recipeBook[productID] == nil then
+                  recipeBook[productID] = { [grade] = { [stacksize] = recipe } }
+                  recipeCount = recipeCount + 1
+                  maxIngredients = math.max(maxIngredients, Recipe.getNumIngredients(recipe))
+                  numBuildings = numBuildings + 1
+                else
+                  if recipeBook[productID][grade] == nil then
+                    recipeBook[productID][grade] = { [stacksize] = recipe }
+                    recipeCount = recipeCount + 1
+                    maxIngredients = math.max(maxIngredients, Recipe.getNumIngredients(recipe))
+                    numBuildings = numBuildings + 1
+                  else
+                    if recipeBook[productID][grade][stacksize] == nil then
+                      recipeBook[productID][grade][stacksize] = recipe
+                      recipeCount = recipeCount + 1
+                      maxIngredients = math.max(maxIngredients, Recipe.getNumIngredients(recipe))
+                      numBuildings = numBuildings + 1
+                    else
+                      -- Add the building ID to the recipe's list of buildings that can make it.
+                      Recipe.addBuilding(recipeBook[productID][grade][stacksize], buildingID)
+                      recipeCount = recipeCount + 1
+                      maxIngredients = math.max(maxIngredients, Recipe.getNumIngredients(recipe))
+                      numBuildings = numBuildings + 1
+                    end
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  return recipeBook, recipeCount, maxIngredients, numBuildings
+end
+
+-- Renders a link to a building using its ID for when that's all you have.
+---@param buildingID BuildingID
+---@param iconSize string|nil size of the icon including any units, e.g., `20em` or `x16px` or assumes `px` if no units, or nil for default
+---@param needsIcon boolean
+---@param needsText boolean
+---@return Wikitext wikitext
+function Building.buildingLinkByID(buildingID, iconSize, needsIcon, needsText)
+  return buildingLink(data()[buildingID], iconSize, needsIcon, needsText, false, nil)
+end
+
 -- Looks at the arguments to the original template to see if the author asked for a plural form.
 ---@param frame Frame MediaWiki template context
 ---@return boolean needsPlural
@@ -225,10 +325,6 @@ local function checkPlural(frame)
   end
   return false
 end
-
---#endregion Private Members
-
---#region Public Methods
 
 -- Building_link template invokes this method from MediaWiki.
 ---@param frame Frame MediaWiki template context
@@ -259,9 +355,11 @@ function Building.link(frame)
   if not building then
     return "[Building not found: " .. name .. "]"
   end
-  return Building.buildingLink(building, iconSize, needsIcon, needsText, needsPlural, pluralForm)
+  return buildingLink(building, iconSize, needsIcon, needsText, needsPlural, pluralForm)
 end
 
 --#endregion Public Methods
+
+
 
 return Building
