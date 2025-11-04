@@ -4,7 +4,7 @@ local Resource = {}
 -- A single resource with attributes like ID, name, category, etc.
 ---@class Resource
 ---@field _id ResourceID Unique ID code of the resource.
----@field _displayName string The display name in-game.
+---@field _displayName ResourceName The display name in-game.
 ---@field _description string The in-game descriptive text, including sprite icons, newlines, and escape characters.
 ---@field _iconFilename Filename The file name of the icon for this resource.
 ---@field _category CategoryResource Resource type from the info bar.
@@ -17,11 +17,14 @@ local Resource = {}
 -- The ID code of a good or resource.
 ---@alias ResourceID string
 
+-- The display name of a resource.
+---@alias ResourceName string
+
 -- Currency in-game.
 ---@alias Amber number
 
 -- The ID and amount of a good or service.
----@alias ResourcePair {_id: ResourceID, _amount: integer}
+---@alias ResourcePair {_id: ResourceID, _amount: Amount}
 
 -- The resource category based on the info bar.<br>
 -- Metaresources are categorized with trade goods.
@@ -64,24 +67,24 @@ local MIN_ICON_SIZE = 16
 
 --#region Private Members
 
----@type Resource[]
+---@type table<ResourceID, Resource>
 local resourceData
----@type table<string, ResourceID>
+---@type table<ResourceName, ResourceID>
 local mapNamesToIDs
 
 local function data()
   if not resourceData then
     mapNamesToIDs = {}
     resourceData = mw.loadData(RESOURCES_DATA_FILE)
-    for id, building in pairs(resourceData) do
-      mapNamesToIDs[building._displayName] = id
+    for id, resource in pairs(resourceData) do
+      mapNamesToIDs[resource._displayName] = id
     end
   end
   return resourceData
 end
 
 -- Finds a resource by its display name.
----@param resourceName string display name of the resource
+---@param resourceName ResourceName display name
 ---@return Resource|nil foundResource or nil if not found
 local function findName(resourceName)
   local foundResource = nil
@@ -137,7 +140,7 @@ function Resource.isGood(id)
 end
 
 -- Finds a resource's ID by its display name.
----@param displayName string
+---@param displayName ResourceName
 ---@return ResourceID|nil
 function Resource.getID(displayName)
   data()
@@ -146,9 +149,10 @@ end
 
 -- Renders a table of pairs of resource IDs and amounts.
 ---@param pairsList ResourcePair[] array of pairs of resource IDs and amounts
----@vararg string additional classes to add to the table, if any
+---@param iconSize string |nil size of the icon including any units, e.g., `20em` or `x16px` or assumes `px` if no units, or nil if not relevant
+---@vararg string|nil additional classes to add to the table, if any
 ---@return Wikitext wikitext
-function Resource.tableStack(pairsList, ...)
+function Resource.tableStack(pairsList, iconSize, ...)
   local classes = {...}
   local wikitext = "{|" .. ((#classes > 0) and ("class=" .. table.concat(classes, " ")) or "") .. "\n"
   for _, pair in ipairs(pairsList) do
@@ -156,16 +160,16 @@ function Resource.tableStack(pairsList, ...)
     if not resource then return "[Resource table stack ID not found: " .. pair._id .. "]" end
     wikitext = wikitext .. "|-\n"
     wikitext = wikitext .. "| " .. pair._amount .. "\n"
-    wikitext = wikitext .. "|style=\"text-align:left;\"| " .. resourceLink(resource, standards.medium, true, true) .. "\n"
+    wikitext = wikitext .. "|style=\"text-align:left;\"| " .. resourceLink(resource, iconSize or standards.medium, true, true) .. "\n"
   end
   return wikitext .. "|}"
 end
 
 -- Renders a link to the given resource's wiki page by its ID.
 ---@param resourceID ResourceID
----@param iconSize string size of the icon including units, e.g., "x16px"
----@param needsIcon boolean
----@param needsText boolean
+---@param iconSize string|nil size of the icon including units, e.g., "x16px" or nil for default
+---@param needsIcon boolean|nil or nil for default
+---@param needsText boolean|nil or nil for default
 ---@return Wikitext wikitext
 function Resource.resourceLinkByID(resourceID, iconSize, needsIcon, needsText)
   return resourceLink(data()[resourceID], iconSize, needsIcon, needsText)

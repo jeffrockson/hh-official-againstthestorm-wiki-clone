@@ -67,5 +67,6 @@ extensions/Scribunto/modules/ext.scribunto.logs.css
 csrftoken.txt
 apilogin.json
 .env
+.luarc.json
 
 

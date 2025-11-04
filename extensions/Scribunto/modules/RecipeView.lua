@@ -16,7 +16,7 @@ local isNeed = Need.isNeed
 local Wiki_Utility = require("Module:Wiki_Utility")
 local divWrap = Wiki_Utility.surroundWithDiv
 local NBSP = Wiki_Utility.NBSP
-local sizes = Wiki_Utility.StandardizedSizes
+local standards = Wiki_Utility.StandardizedSizes
 local gradeStars = Wiki_Utility.GradeStars
 
 --#endregion Dependencies
@@ -25,27 +25,32 @@ local gradeStars = Wiki_Utility.GradeStars
 
 --#region Private Methods
 
--- Makes the caption for the view of recipes.
+-- Makes the caption for the view of recipes.<br>
+-- "# Recipe[s] for [requiredProduct] using [requiredIngredient] in the [requiredBuilding]."
 ---@param recipeCount integer number of recipes shown
----@param requiredProduct string|nil name of the product, or nil if none required
----@param requiredBuilding string|nil name of the building, or nil if none required
----@param requiredIngredient string|nil name of the ingredient, or nil if none required
+---@param requiredProduct ResourceName|nil display name of the product, or nil if none required
+---@param requiredBuilding BuildingName|nil display name of the building, or nil if none required
+---@param requiredIngredient ResourceName|nil display name of the ingredient, or nil if none required
 ---@return string # caption
 local function makeCaption(recipeCount, requiredProduct, requiredBuilding, requiredIngredient)
-	return recipeCount .. " recipes" 
-		.. (requiredProduct and " for " .. requiredProduct or "")
-		.. (requiredIngredient and " using " .. requiredIngredient or "")
-		.. (requiredBuilding and " in the " .. requiredBuilding or "")
+	return recipeCount .. " Recipe" .. (recipeCount ~= 1 and "s" or "")
+		.. (requiredProduct and (" for " .. requiredProduct) or "")
+		.. (requiredIngredient and (" using " .. requiredIngredient) or "")
+		.. (requiredBuilding and (" in the " .. requiredBuilding) or "")
 		.. "."
 end
 
--- Starts the table and sets the caption and header row.
+-- Starts the table and sets the caption and header row.<br>
+-- `{| [classes]`<br>
+-- `|+ [caption]`<br>
+-- `|-`<br>
+-- `! Building[s] !! Grade !! Ingredient[s] !! # !! Product`
 ---@param recipeCount integer number of recipes that will be in the table
 ---@param maxIngredients integer number of ingredients slots required to represent them all
 ---@param numBuildings integer total number of buildings that can make the recipes
----@param requiredProduct string|nil name of the product, or nil if none required
----@param requiredBuilding string|nil name of the building, or nil if none required
----@param requiredIngredient string|nil name of the ingredient, or nil if none required
+---@param requiredProduct ResourceName|nil for the caption
+---@param requiredBuilding BuildingName|nil for the caption
+---@param requiredIngredient ResourceName|nil for the caption
 ---@return Wikitext wikitext
 local function startTableHeader(recipeCount, maxIngredients, numBuildings, requiredProduct, requiredBuilding, requiredIngredient)
 	local wikitext = "{| class=\"sortable mw-collapsible ats-table-recipe\n"
@@ -71,15 +76,6 @@ local function startTableHeader(recipeCount, maxIngredients, numBuildings, requi
 	return wikitext
 end
 
--- Wraps the resource stack for a specified ingredient slot and the number of options.
----@param recipe Recipe
----@param slotIndex integer
----@return Wikitext wikitext
-local function renderIngredientsInnerTable(recipe, slotIndex)
-	local numOptions = Recipe.getNumOptions(recipe, slotIndex)
-	return Resource.tableStack(Recipe.getIngredientOptions(recipe, slotIndex), ((numOptions > 1) and "ats-swappable-ingredient-icon" or "ats-single-ingredient-icon"))
-end
-
 -- Shortcut to make a link to a resource, building, or need. Validates the ID first or throws an error if it's invalid, beacuse that shouldn't happen in working code.<br>
 -- In this module, this requires no unnecessary data loading.
 ---@param id ResourceID|BuildingID|NeedID
@@ -88,8 +84,7 @@ end
 ---@param needsText boolean
 ---@return Wikitext wikitext
 local function makeLink(id, iconSize, needsIcon, needsText)
-	local isResource = isGood(id)
-	if isResource then
+	if isGood(id) then
 		return Resource.resourceLinkByID(id, iconSize, needsIcon, needsText)
 	elseif isBuilding(id) then
 		return Building.buildingLinkByID(id, iconSize, needsIcon, needsText)
@@ -99,16 +94,42 @@ local function makeLink(id, iconSize, needsIcon, needsText)
 	error("RecipeView cannot make link to invalid ID:" .. id)
 end
 
+-- Wraps the resource stack for a specified ingredient slot and the number of options.
+---@param recipe Recipe
+---@param slotIndex integer
+---@return Wikitext wikitext
+local function renderIngredientsInnerTable(recipe, slotIndex)
+	local numOptions = Recipe.getNumOptions(recipe, slotIndex)
+	return Resource.tableStack(Recipe.getIngredientOptions(recipe, slotIndex), standards.medium, ((numOptions > 1) and "ats-swappable-ingredient-icon" or "ats-single-ingredient-icon"))
+end
+
+-- Renders the buildings that can make the recipe.
+---@param recipe Recipe
+---@param reqBuildingID BuildingID|nil ID of the required building, or nil if none required
+---@return Wikitext wikitext
+local function renderBuildings(recipe, reqBuildingID)
+	local wikitext = ""
+	local buildingIDs = Recipe.getBuildings(recipe)
+	-- groups of buildings have smaller icons (and btw always show their names)
+	if #buildingIDs > 1 then
+		wikitext = wikitext .. Building.tableStack(buildingIDs, standards.large, "ats-table-recipe-multiple-buildings")
+	else
+		local onlyBuildingID = buildingIDs[1]
+		wikitext = wikitext .. Building.buildingLinkByID(onlyBuildingID, standards.huge, true, onlyBuildingID ~= reqBuildingID)
+	end
+	return wikitext
+end
+
 -- Renders a table view of the recipes.
 ---@param recipeBook RecipeBook
 ---@param recipeCount integer number of recipes in the RecipeBook
 ---@param maxIngredients integer number of ingredients slots required to represent them all
 ---@param numBuildings integer total number of buildings that can make the recipes
----@param requiredProduct string|nil name of the product, or nil if none required
+---@param requiredProduct ProductName|nil name of the product, or nil if none required
 ---@param reqProductID ProductID|nil ID of the product, or nil if none required
----@param requiredBuilding string|nil name of the building, or nil if none required
+---@param requiredBuilding BuildingName|nil name of the building, or nil if none required
 ---@param reqBuildingID BuildingID|nil ID of the building, or nil if none required
----@param requiredIngredient string|nil name of the ingredient, or nil if none required
+---@param requiredIngredient ResourceName|nil name of the ingredient, or nil if none required
 ---@return Wikitext wikitext markup that renders the recipe table
 local function renderTableView(recipeBook, recipeCount, maxIngredients, numBuildings, requiredProduct, reqProductID, requiredBuilding, reqBuildingID, requiredIngredient)
 	local wikitext = startTableHeader(recipeCount, maxIngredients, numBuildings, requiredProduct, requiredBuilding, requiredIngredient)
@@ -120,29 +141,22 @@ local function renderTableView(recipeBook, recipeCount, maxIngredients, numBuild
 		for grade, recipesByStacksize in pairs(recipeListByGrade) do
 			for stackSize, recipe in pairs(recipesByStacksize) do
 				wikitext = wikitext .. "|- <!-- Recipe row -->\n"
-				wikitext = wikitext .. "| "
-				local buildings = Recipe.getBuildings(recipe)
-				-- groups of buildings have smaller icons
-				local iconSize = #buildings > 1 and sizes.large or sizes.huge
-				for i, buildingID in ipairs(buildings) do
-					wikitext = wikitext .. makeLink(buildingID, iconSize, true, buildingID ~= reqBuildingID)
-					if i < #buildings then
-						wikitext = wikitext .. "<br />"
-					else
-						wikitext = wikitext .. "\n"
-					end
-				end
+				wikitext = wikitext .. "| \n" .. renderBuildings(recipe, reqBuildingID) .. "\n"
 				wikitext = wikitext .. "| " .. gradeStars[grade] .. "<br />" .. Recipe.getTimeClock(recipe) .. "\n"
 				local numIngredients = Recipe.getNumIngredients(recipe)
 				for _ = 1, maxIngredients - numIngredients do
 					wikitext = wikitext .. "| &mdash;\n" -- empty cell filler
 				end
-				for j = 1, numIngredients do
-					wikitext = wikitext .. "|class=ats-table-recipe-ingredients-options| \n" .. renderIngredientsInnerTable(recipe, j) .. "\n"
+				-- now that we have the empty cell fillers, we always need at least one ingredient cell
+				if numIngredients == 0 and maxIngredients == 0 then
+					wikitext = wikitext .. "| &mdash;\n"
+				else
+					for j = 1, numIngredients do
+						wikitext = wikitext .. "|class=ats-table-recipe-ingredients-options| \n" .. renderIngredientsInnerTable(recipe, j) .. "\n"
+					end
 				end
 				wikitext = wikitext .. "| " .. stackSize .. "\n"
-				wikitext = wikitext .. "| " .. makeLink(productID, sizes.huge, true, productID ~= reqProductID) .. "\n"
-				wikitext = wikitext .. "\n"
+				wikitext = wikitext .. "| " .. makeLink(productID, standards.huge, true, productID ~= reqProductID) .. "\n"
 			end
 		end
 	end
@@ -171,7 +185,7 @@ local function renderListView(recipeBook, recipeCount, requiredProduct, required
 						wikitext = wikitext .. "* " .. makeLink(buildingID, "0", false, true) .. NBSP .. "(" .. gradeStars[grade] .. ")\n"
 					end
 				else
-					wikitext = wikitext .. "* " .. makeLink(productID, sizes.small, true, true) .. NBSP .. "(" .. gradeStars[grade] .. ")\n"
+					wikitext = wikitext .. "* " .. makeLink(productID, standards.small, true, true) .. NBSP .. "(" .. gradeStars[grade] .. ")\n"
 				end
 			end
 		end

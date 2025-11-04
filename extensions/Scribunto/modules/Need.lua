@@ -4,7 +4,7 @@ local Need = {}
 -- A single need with attributes like ID, name, category, etc.
 ---@class Need
 ---@field _id NeedID Unique ID code of the need.
----@field _displayName string The display name in-game.
+---@field _displayName NeedName The display name in-game.
 ---@field _description string The in-game descriptive text, including sprite icons, newlines, and escape characters.
 ---@field _iconFilename Filename The file name of the icon for this resource.
 ---@field _category CategoryResource Resource type from the info bar.
@@ -13,11 +13,17 @@ local Need = {}
 -- The ID code of a need or service.
 ---@alias NeedID NeedID
 
+-- The display name of a need or service.
+---@alias NeedName string
+
 -- The ID and amount of a need or service.
 ---@alias NeedPair {_id: NeedID, _amount: integer}
 
 -- The ID code of a service, specifically.
 ---@alias ServiceID NeedID
+
+-- The display name of a service.
+---@alias ServiceName NeedName
 
 -- The ID and amount of a service, although I can't imagine this being anything but 1.
 ---@alias ServicePair {_id: ServiceID, _amount: integer}
@@ -62,7 +68,7 @@ local MIN_ICON_SIZE = 16
 
 --#region Private Members
 
----@type Need[]
+---@type table<NeedID, Need>
 local needData
 ---@type table<string, NeedID>
 local mapNamesToIDs
@@ -79,7 +85,7 @@ local function data()
 end
 
 -- Finds a need by its display name.
----@param needName string display name of the need
+---@param needName NeedName display name of the need
 ---@return Need|nil foundNeed
 local function findName(needName)
   data()
@@ -131,7 +137,7 @@ end
 
 -- Finds a need's ID by its display name.<br>
 -- Service buildings' recipes currently are indexed by name, not ID, so if the map returns nil, check 
----@param displayName string
+---@param displayName NeedName
 ---@return NeedID|nil
 function Need.getID(displayName)
   data()

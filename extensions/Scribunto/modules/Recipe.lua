@@ -25,16 +25,22 @@ local Recipe = {}
 -- Subsubset of recipes sorted by [stackSize] (sparse: only existing stack sizes present).<br>
 -- Use `pairs()` to iterate, not `ipairs()`.<br>
 -- For sorting, extract keys, then sort, then iterate.
----@alias RecipeSublistByStacksize table<integer, Recipe>
+---@alias RecipeSublistByStacksize table<Amount, Recipe>
 
 -- The ID and amount of a good or service made.
 ---@alias ProductPair ResourcePair
 
 -- The ID, amount, and probability of an extra product.
----@alias ExtraProductChance {_id: ProductID, _amount: integer, _chance: number}
+---@alias ExtraProductChance {_id: ProductID, _amount: Amount, _chance: number}
 
 -- The ID of a good or service produced.
 ---@alias ProductID ResourceID
+
+-- The display name of a good or service produced.
+---@alias ProductName ResourceName|NeedName
+
+-- An amount of a good or resource.
+---@alias Amount integer
 
 -- A number 0, 1, 2, or 3 (worst to best) of a recipe indicating its efficiency, effectiveness, or capability.
 ---@alias Grade 0|1|2|3
@@ -42,15 +48,6 @@ local Recipe = {}
 
 
 --#region Public Methods
-
--- Adds the given building ID to the recipe's list of buildings that can make it.
----@param recipe Recipe
----@param buildingID BuildingID
----@return BuildingID[] buildings
-function Recipe.addBuilding(recipe, buildingID)
-	table.insert(recipe._buildings, buildingID)
-	return recipe._buildings
-end
 
 -- Checks if the given ingredient is anywhere in the recipe's ingredient options.
 ---@param recipe Recipe
@@ -83,8 +80,8 @@ end
 ---@param recipe Recipe
 ---@param slotIndex integer
 ---@param optionIndex integer
----@return ResourceID
----@return integer # amount
+---@return ResourceID # ingredient ID
+---@return Amount # amount
 function Recipe.getIngredient(recipe, slotIndex, optionIndex)
 	local ingredientPair = recipe._ingredients[slotIndex][optionIndex]
 	return ingredientPair._id, ingredientPair._amount
@@ -92,15 +89,16 @@ end
 
 -- Gets the product of the recipe, both the ID and amount.
 ---@param recipe Recipe
----@return ProductID
----@return integer # amount
+---@return ProductID # product ID
+---@return Amount # amount
 function Recipe.getProduct(recipe)
 	return recipe._productPair._id, recipe._productPair._amount
 end
 
--- Gets the number of ingredient slots in the recipe.
+-- Gets the number of ingredient slots in the recipe.<br>
+-- This *must* loop over the array due to MediaWiki's metatables on data loaded with `mw.loadData` messing with `#` operator.
 ---@param recipe Recipe
----@return integer
+---@return integer # number of ingredient slots
 function Recipe.getNumIngredients(recipe)
 	if not recipe._ingredients then
 		error("Recipe.getNumIngredients cannot work with nil array.")
@@ -112,10 +110,11 @@ function Recipe.getNumIngredients(recipe)
 	return count
 end
 
--- Gets the number of options for the given ingredient slot.
+-- Gets the number of options for the given ingredient slot.<br>
+-- This *must* loop over the array due to MediaWiki's metatables on data loaded with `mw.loadData` messing with `#` operator.
 ---@param recipe Recipe
 ---@param slotIndex integer
----@return integer
+---@return integer # number of options in the slot
 function Recipe.getNumOptions(recipe, slotIndex)
 	if not recipe._ingredients then
 		error("Recipe.getNumOptions cannot work with nil array.")
@@ -129,9 +128,24 @@ end
 
 -- Gets the array of buildings that can make the recipe.
 ---@param recipe Recipe
----@return BuildingID[]
+---@return BuildingID[] _buildings
 function Recipe.getBuildings(recipe)
 	return recipe._buildings
+end
+
+-- Gets the number of buildings that can make the recipe.<br>
+-- This *must* loop over the array due to MediaWiki's metatables on data loaded with `mw.loadData` messing with `#` operator.
+---@param recipe Recipe
+---@return integer # number of buildings that can make the recipe
+function Recipe.getNumBuildings(recipe)
+	if not recipe._buildings then
+		error("Recipe.getNumBuildings cannot work with nil array.")
+	end
+	local count = 0
+	for _ in ipairs(recipe._buildings) do
+		count = count + 1
+	end
+	return count
 end
 
 -- Gets the production time of the recipe.
@@ -148,6 +162,58 @@ function Recipe.getTimeClock(recipe)
 	local minutes = math.floor((recipe._time or 0) / 60)
 	local seconds = (recipe._time or 0) % 60
 	return string.format("%d:%02d", minutes, seconds)
+end
+
+-- Adds the given building ID to the recipe's list of buildings that can make it.
+---@param recipe Recipe
+---@param buildingID BuildingID
+---@return BuildingID[] _buildings with the new building added
+function Recipe.addBuilding(recipe, buildingID)
+	table.insert(recipe._buildings, buildingID)
+	return recipe._buildings
+end
+
+-- Copies the given recipe.<br>
+-- *This is required for any recipes loaded with `mw.loadData` so they can be modified and so the `#` operator works.
+---@param recipe Recipe
+---@return Recipe copy
+function Recipe.copy(recipe)
+	---@type Recipe
+	local copy = {
+		_buildings = {},
+    _grade = recipe._grade,
+    _time = recipe._time,
+    _productPair = {
+      _id = recipe._productPair._id,
+      _amount = recipe._productPair._amount
+    },
+    _isService = recipe._isService,
+		_extraProductChances = nil, -- optional and needs to be nil unless the original has it
+    _ingredients = {}
+	}
+	for _, buildingID in ipairs(recipe._buildings) do
+		table.insert(copy._buildings, buildingID)
+	end
+	if recipe._extraProductChances then
+		copy._extraProductChances = {}
+		for i, extra in ipairs(recipe._extraProductChances) do
+			copy._extraProductChances[i] = {
+				_id = extra._id,
+				_amount = extra._amount,
+				_chance = extra._chance
+			}
+		end
+	end
+	for i, slot in ipairs(recipe._ingredients) do
+		copy._ingredients[i] = {}
+		for j, option in ipairs(slot) do
+			copy._ingredients[i][j] = {
+				_id = option._id,
+				_amount = option._amount
+			}
+		end
+	end
+	return copy
 end
 
 --#endregion Public Methods

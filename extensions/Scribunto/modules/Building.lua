@@ -5,7 +5,7 @@ local Building = {}
 -- A single building with generic attributes like ID, name, category, etc.
 ---@class Building
 ---@field _id BuildingID Unique ID code of the building.
----@field _displayName string The display name in-game.
+---@field _displayName BuildingName The display name in-game.
 ---@field _description string The in-game descriptive text, including sprite icons, newlines, and escape characters.
 ---@field _iconFilename Filename The file name of the icon, including its extension.
 ---@field _category CategoryConstruction Construction type from the construction toolbar, or non-buildable type.
@@ -27,8 +27,11 @@ local Building = {}
 -- A unique identifier for a building.
 ---@alias BuildingID string
 
+-- The display name of a building.
+---@alias BuildingName string
+
 -- An ID and amount of a good (e.g., for construction or upgrades).
----@alias RequiredGoodPair {_id: ResourceID, _amount: integer}
+---@alias RequiredGoodPair {_id: ResourceID, _amount: Amount}
 
 -- An ID of a water type.
 ---@alias WaterID ResourceID
@@ -122,11 +125,12 @@ local BUILDING_DATA_FILES = {
 }
 
 local Recipe = require("Module:Recipe")
+local copy = Recipe.copy
 
 local Wiki_Utility = require("Module:Wiki_Utility")
 local icon = Wiki_Utility.renderIcon
 local nowrap = Wiki_Utility.surroundWithNoWrap
-local classes = Wiki_Utility.surroundWithClasses
+local wrapClasses = Wiki_Utility.surroundWithClasses
 local link = Wiki_Utility.renderWikiLink
 local NBSP = Wiki_Utility.NBSP
 local standards = Wiki_Utility.StandardizedSizes
@@ -148,7 +152,7 @@ local MIN_ICON_SIZE = 20
 
 ---@type table<BuildingID, Building>
 local buildingData
----@type table<string, BuildingID>
+---@type table<BuildingName, BuildingID>
 local mapNamesToIDs
 
 -- Loads the building data from the data files in sequence.<br>
@@ -172,7 +176,7 @@ local function data()
 end
 
 -- Finds a building by its display name.
----@param buildingName string display name of the building
+---@param buildingName BuildingName display name
 ---@return Building|nil foundBuilding
 local function findName(buildingName)
   data()
@@ -187,7 +191,7 @@ end
 ---@param iconSize string|nil size of the icon including any units, e.g., `20em` or `x16px` or assumes `px` if no units, or nil if not relevant
 ---@param needsIcon boolean
 ---@param needsText boolean
----@param needsPlural boolean
+---@param needsPlural boolean|nil or nil for default (none)
 ---@param pluralForm string|nil the plural form specified by the author, or nil if `needsPlural` is false
 ---@return Wikitext wikitext
 local function buildingLink(building, iconSize, needsIcon, needsText, needsPlural, pluralForm)
@@ -198,7 +202,7 @@ local function buildingLink(building, iconSize, needsIcon, needsText, needsPlura
     if iconSize and not iconSize:match("^x") then
       iconSize = "x" .. iconSize
     end
-    wikitext = wikitext .. classes(icon(building._iconFilename, iconSize, building._displayName, building._displayName), "ats-link-building", sizeN and sizeN < 23 and "ats-flag-small" or nil)
+    wikitext = wikitext .. wrapClasses(icon(building._iconFilename, iconSize, building._displayName, building._displayName), "ats-link-building", sizeN and sizeN < 23 and "ats-flag-small" or nil)
   end
   if (needsIcon and isValidSize and sizeN >= MIN_ICON_SIZE) and needsText then
     wikitext = wikitext .. NBSP
@@ -231,11 +235,28 @@ function Building.isBuilding(id)
 end
 
 -- Finds a building's ID by its display name.
----@param displayName string
+---@param displayName BuildingName
 ---@return BuildingID|nil
 function Building.getID(displayName)
   data()
   return mapNamesToIDs[displayName]
+end
+
+-- Renders a table of building links.
+---@param buildingIDs BuildingID[] array of building IDs
+---@param iconSize string|nil size of the icon including any units, e.g., `20em` or `x16px` or assumes `px` if no units, or nil if not relevant
+---@vararg string|nil additional classes to add to the table, if any
+---@return Wikitext wikitext
+function Building.tableStack(buildingIDs, iconSize, ...)
+  local classes = {...}
+  local wikitext = "{|" .. ((#classes > 0) and ("class=" .. table.concat(classes, " ")) or "") .. "\n"
+  for _, buildingID in ipairs(buildingIDs) do
+    local building = data()[buildingID]
+    if not building then return "[Building table stack ID not found: " .. buildingID .. "]" end
+    wikitext = wikitext .. "|-\n"
+    wikitext = wikitext .. "| " .. buildingLink(building, iconSize or standards.medium, true, true) .. "\n"
+  end
+  return wikitext .. "|}"
 end
 
 -- Retrieves a complete listing of recipes filtered down to those with the required product, building, and ingredient.<br>
@@ -265,19 +286,19 @@ function Building.compileRecipeBook(requiredProductID, requiredBuildingID, requi
               -- if no filter on ingredient OR match
               if not requiredIngredientID or Recipe.isIngredientInOptions(recipe, requiredIngredientID) then
                 if recipeBook[productID] == nil then
-                  recipeBook[productID] = { [grade] = { [stacksize] = recipe } }
+                  recipeBook[productID] = { [grade] = { [stacksize] = copy(recipe) } }
                   recipeCount = recipeCount + 1
                   maxIngredients = math.max(maxIngredients, Recipe.getNumIngredients(recipe))
                   numBuildings = numBuildings + 1
                 else
                   if recipeBook[productID][grade] == nil then
-                    recipeBook[productID][grade] = { [stacksize] = recipe }
+                    recipeBook[productID][grade] = { [stacksize] = copy(recipe) }
                     recipeCount = recipeCount + 1
                     maxIngredients = math.max(maxIngredients, Recipe.getNumIngredients(recipe))
                     numBuildings = numBuildings + 1
                   else
                     if recipeBook[productID][grade][stacksize] == nil then
-                      recipeBook[productID][grade][stacksize] = recipe
+                      recipeBook[productID][grade][stacksize] = copy(recipe)
                       recipeCount = recipeCount + 1
                       maxIngredients = math.max(maxIngredients, Recipe.getNumIngredients(recipe))
                       numBuildings = numBuildings + 1
