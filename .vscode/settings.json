@@ -85,5 +85,13 @@
     "thumb_handler.php": true,
     "thumb.php": true,
     "UPGRADE": true
+  },
+  "emeraldwalk.runonsave": {
+    "commands": [
+      {
+        "match": "\\.lua$",
+        "cmd": "python ${workspaceFolder}/extensions/scribunto/modules/upload_module.py ${file} -u Aeredor -p O%#59Vgd#70F6cD7#@"
+      }
+    ]
   }
 }

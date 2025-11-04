@@ -5,19 +5,19 @@ _G.mw_runner = {}
 local mw_runner = _G.mw_runner
 
 -- Read environment variables from launch.json
-local mw_path = os.getenv("MW_PATH")
-local lua_lib_path = os.getenv("LUA_LIB_PATH")
-local module_path = os.getenv("MODULE_PATH")
+local MW_PATH = os.getenv("MW_PATH")
+local LUA_LIB_PATH = os.getenv("LUA_LIB_PATH")
+local MODULES_PATH = os.getenv("MODULE_PATH")
 
-if not mw_path or not lua_lib_path or not module_path then
+if not MW_PATH or not LUA_LIB_PATH or not MODULES_PATH then
     error("MW_PATH and LUA_LIB_PATH and MODULE_PATH must be set in your launch.json env block")
 end
 
 -- Extend package path so 'mw.*' libraries resolve
 package.path = table.concat({
-    lua_lib_path .. "/?.lua",
-    lua_lib_path .. "/ustring/?.lua",
-    module_path .. "/?.lua",
+    LUA_LIB_PATH .. "/?.lua",
+    LUA_LIB_PATH .. "/ustring/?.lua",
+    MODULES_PATH .. "/?.lua",
     package.path
 }, ";")
 
@@ -25,12 +25,14 @@ package.path = table.concat({
 unpack = unpack or table.unpack
 
 -- Preload MediaWiki modules manually
-package.preload["mw"]        = function() return dofile(lua_lib_path .. "/mw.lua") end
-package.preload["mw.title"]  = function() return dofile(lua_lib_path .. "/mw.title.lua") end
-package.preload["mw.text"]   = function() return dofile(lua_lib_path .. "/mw.text.lua") end
-package.preload["mw.html"]   = function() return dofile(lua_lib_path .. "/mw.html.lua") end
-package.preload["mw.ustring"] = function() return dofile(lua_lib_path .. "/mw.ustring.lua") end
--- Require the MediaWiki core Lua library
+package.preload["mw"]        = function() return dofile(LUA_LIB_PATH .. "/mw.lua") end
+package.preload["mw.title"]  = function() return dofile(LUA_LIB_PATH .. "/mw.title.lua") end
+package.preload["mw.text"]   = function() return dofile(LUA_LIB_PATH .. "/mw.text.lua") end
+package.preload["mw.html"]   = function() return dofile(LUA_LIB_PATH .. "/mw.html.lua") end
+package.preload["mw.ustring"] = function() return dofile(LUA_LIB_PATH .. "/mw.ustring.lua") end
+
+-- MediaWiki core Lua library
+---@diagnostic disable-next-line: lowercase-global
 mw = require("mw")
 mw.title = require("mw.title")
 mw.ustring = require("mw.ustring")
@@ -46,7 +48,7 @@ function require(name)
 
     -- Strip "Module:" prefix for MediaWiki-style requires
     local moduleName = name:gsub("^Module:", "")
-    local path = module_path .. "/" .. moduleName .. ".lua"
+    local path = MODULES_PATH .. "/" .. moduleName .. ".lua"
 
     local file = io.open(path, "r")
     if file then
@@ -68,9 +70,9 @@ function mw.title.new(title)
     -- Determine base path
     local base
     if title:match("^Template:") then
-        base = mw_path .. "/templates/" .. title:gsub("^Template:", "")
+        base = MW_PATH .. "/templates/" .. title:gsub("^Template:", "")
     else
-        base = module_path .. "/" .. title:gsub("^Module:", "")
+        base = MODULES_PATH .. "/" .. title:gsub("^Module:", "")
     end
 
     -- If an explicit or implicit extension is present, load directly
@@ -125,10 +127,11 @@ function mw_runner.setFrame(args)
 end
 
 -- Load the target module passed from launch.json (the current file)
-local target = os.getenv("TARGET_FILE")
-if not target or target == "" then
+local TARGET_FILE = os.getenv("TARGET_FILE")
+if not TARGET_FILE or TARGET_FILE == "" then
     print("Usage: open a Module file or test script and press F5 to debug it.")
     os.exit(1)
 end
+print("[mw_runner] Loading target file: " .. TARGET_FILE)
 
-dofile(target)
+-- dofile(TARGET_FILE)
