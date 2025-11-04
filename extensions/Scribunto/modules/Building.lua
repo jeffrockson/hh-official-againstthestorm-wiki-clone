@@ -242,6 +242,13 @@ function Building.getID(displayName)
   return mapNamesToIDs[displayName]
 end
 
+-- Gets the specified building's display name.
+---@param id BuildingID
+---@return BuildingName
+function Building.getName(id)
+  return data()[id]._displayName
+end
+
 -- Renders a table of building links.
 ---@param buildingIDs BuildingID[] array of building IDs
 ---@param iconSize string|nil size of the icon including any units, e.g., `20em` or `x16px` or assumes `px` if no units, or nil if not relevant

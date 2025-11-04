@@ -147,6 +147,13 @@ function Resource.getID(displayName)
   return mapNamesToIDs[displayName]
 end
 
+-- Gets the specified resource's display name.
+---@param id ResourceID
+---@return ResourceName
+function Resource.getName(id)
+  return data()[id]._displayName
+end
+
 -- Renders a table of pairs of resource IDs and amounts.
 ---@param pairsList ResourcePair[] array of pairs of resource IDs and amounts
 ---@param iconSize string |nil size of the icon including any units, e.g., `20em` or `x16px` or assumes `px` if no units, or nil if not relevant

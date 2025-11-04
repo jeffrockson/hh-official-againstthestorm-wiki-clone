@@ -144,6 +144,13 @@ function Need.getID(displayName)
   return mapNamesToIDs[displayName]
 end
 
+-- Gets the specified need's display name.
+---@param id NeedID
+---@return NeedName
+function Need.getName(id)
+  return data()[id]._displayName
+end
+
 -- Renders a link to a need using its ID.
 ---@param needID NeedID
 ---@param iconSize string|nil size of the icon including any units, e.g., `20em` or `x16px`, or nil for default

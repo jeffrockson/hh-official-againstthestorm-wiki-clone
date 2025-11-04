@@ -25,6 +25,82 @@ local gradeStars = Wiki_Utility.GradeStars
 
 --#region Private Methods
 
+-- Sorts the product IDs in the recipeBook by their corresponding display names.
+---@param recipeBook RecipeBook
+---@return ProductID[] productIDs sorted, but by display name
+local function sortKeysProductID(recipeBook)
+  local products = {}
+  for id, _ in pairs(recipeBook) do
+		local pName = (isGood(id) and Resource.getName(id)) or (isNeed(id) and Need.getName(id)) or nil
+		if not pName then error("RecipeView cannot sort invalid product ID: " .. id) end
+    table.insert(products, {id = id, name = pName})
+  end
+  table.sort(products, function(a, b) return a.name < b.name end)
+  local productIDs = {}
+  for i, prod in ipairs(products) do
+    productIDs[i] = prod.id
+  end
+  return productIDs
+end
+
+-- Sorts the grades in reverse order, since higher grade is better.
+---@param recipeListByGrade RecipeListByGrade
+---@return Grade[] grades sorted
+local function sortKeysGrade(recipeListByGrade)
+	local grades = {}
+	for g, _ in pairs(recipeListByGrade) do
+		table.insert(grades, g)
+	end
+	table.sort(grades, function(a, b) return a > b end)
+	return grades
+end
+
+-- Sorts the stack sizes in reverse order, since larger stacks are better.
+---@param recipeSublistByStacksize RecipeSublistByStacksize
+---@return Amount[] amounts sorted
+local function sortKeysAmount(recipeSublistByStacksize)
+	local amounts = {}
+	for a, _ in pairs(recipeSublistByStacksize) do
+		table.insert(amounts, a)
+	end
+	table.sort(amounts, function(a, b) return a > b end)
+	return amounts
+end
+
+-- Sorts the building IDs in the recipe by their corresponding display names.
+---@param recipe Recipe
+---@return BuildingID[] buildingIDs sorted, but by display name
+local function sortedBuildingIDs(recipe)
+	local buildings = {}
+	for _, id in pairs(Recipe.getBuildings(recipe)) do
+		table.insert(buildings, {id = id, name = Building.getName(id)})
+	end
+	table.sort(buildings, function(a, b) return a.name < b.name end)
+	local buildingIDs = {}
+	for i, building in ipairs(buildings) do
+		buildingIDs[i] = building.id
+	end
+	return buildingIDs
+end
+
+-- Shortcut to make a link to a resource, building, or need. Validates the ID first or throws an error if it's invalid, beacuse that shouldn't happen in working code.<br>
+-- In this module, this requires no unnecessary data loading.
+---@param id ResourceID|BuildingID|NeedID
+---@param iconSize string
+---@param needsIcon boolean
+---@param needsText boolean
+---@return Wikitext wikitext
+local function makeLink(id, iconSize, needsIcon, needsText)
+	if isGood(id) then
+		return Resource.resourceLinkByID(id, iconSize, needsIcon, needsText)
+	elseif isBuilding(id) then
+		return Building.buildingLinkByID(id, iconSize, needsIcon, needsText)
+	elseif isNeed(id) then
+		return Need.needLinkByID(id, iconSize, needsIcon, needsText)
+	end
+	error("RecipeView cannot make link to invalid ID:" .. id)
+end
+
 -- Makes the caption for the view of recipes.<br>
 -- "# Recipe[s] for [requiredProduct] using [requiredIngredient] in the [requiredBuilding]."
 ---@param recipeCount integer number of recipes shown
@@ -76,22 +152,21 @@ local function startTableHeader(recipeCount, maxIngredients, numBuildings, requi
 	return wikitext
 end
 
--- Shortcut to make a link to a resource, building, or need. Validates the ID first or throws an error if it's invalid, beacuse that shouldn't happen in working code.<br>
--- In this module, this requires no unnecessary data loading.
----@param id ResourceID|BuildingID|NeedID
----@param iconSize string
----@param needsIcon boolean
----@param needsText boolean
+-- Renders the buildings that can make the recipe.
+---@param recipe Recipe
+---@param reqBuildingID BuildingID|nil ID of the required building, or nil if none required
 ---@return Wikitext wikitext
-local function makeLink(id, iconSize, needsIcon, needsText)
-	if isGood(id) then
-		return Resource.resourceLinkByID(id, iconSize, needsIcon, needsText)
-	elseif isBuilding(id) then
-		return Building.buildingLinkByID(id, iconSize, needsIcon, needsText)
-	elseif isNeed(id) then
-		return Need.needLinkByID(id, iconSize, needsIcon, needsText)
+local function renderBuildings(recipe, reqBuildingID)
+	local wikitext = ""
+	local buildingIDs = sortedBuildingIDs(recipe)
+	-- groups of buildings have smaller icons (and btw always show their names)
+	if #buildingIDs > 1 then
+		wikitext = wikitext .. Building.tableStack(buildingIDs, standards.large, "ats-table-recipe-multiple-buildings")
+	else
+		local onlyBuildingID = buildingIDs[1]
+		wikitext = wikitext .. Building.buildingLinkByID(onlyBuildingID, standards.huge, true, onlyBuildingID ~= reqBuildingID)
 	end
-	error("RecipeView cannot make link to invalid ID:" .. id)
+	return wikitext
 end
 
 -- Wraps the resource stack for a specified ingredient slot and the number of options.
@@ -101,23 +176,6 @@ end
 local function renderIngredientsInnerTable(recipe, slotIndex)
 	local numOptions = Recipe.getNumOptions(recipe, slotIndex)
 	return Resource.tableStack(Recipe.getIngredientOptions(recipe, slotIndex), standards.medium, ((numOptions > 1) and "ats-swappable-ingredient-icon" or "ats-single-ingredient-icon"))
-end
-
--- Renders the buildings that can make the recipe.
----@param recipe Recipe
----@param reqBuildingID BuildingID|nil ID of the required building, or nil if none required
----@return Wikitext wikitext
-local function renderBuildings(recipe, reqBuildingID)
-	local wikitext = ""
-	local buildingIDs = Recipe.getBuildings(recipe)
-	-- groups of buildings have smaller icons (and btw always show their names)
-	if #buildingIDs > 1 then
-		wikitext = wikitext .. Building.tableStack(buildingIDs, standards.large, "ats-table-recipe-multiple-buildings")
-	else
-		local onlyBuildingID = buildingIDs[1]
-		wikitext = wikitext .. Building.buildingLinkByID(onlyBuildingID, standards.huge, true, onlyBuildingID ~= reqBuildingID)
-	end
-	return wikitext
 end
 
 -- Renders a table view of the recipes.
@@ -137,12 +195,21 @@ local function renderTableView(recipeBook, recipeCount, maxIngredients, numBuild
 		wikitext = wikitext .. "|-\n"
 		wikitext = wikitext .. "| No recipes.\n"
 	end
-	for productID, recipeListByGrade in pairs(recipeBook) do
-		for grade, recipesByStacksize in pairs(recipeListByGrade) do
-			for stackSize, recipe in pairs(recipesByStacksize) do
+	local sortedKeysProductID = sortKeysProductID(recipeBook)
+	for _, productID in ipairs(sortedKeysProductID) do
+		local sortedKeysGrade = sortKeysGrade(recipeBook[productID])
+		for _, grade in ipairs(sortedKeysGrade) do
+			local sortedKeysStacksize = sortKeysAmount(recipeBook[productID][grade])
+			for _, stacksize in ipairs(sortedKeysStacksize) do
+				local recipe = recipeBook[productID][grade][stacksize]
 				wikitext = wikitext .. "|- <!-- Recipe row -->\n"
-				wikitext = wikitext .. "| \n" .. renderBuildings(recipe, reqBuildingID) .. "\n"
-				wikitext = wikitext .. "| " .. gradeStars[grade] .. "<br />" .. Recipe.getTimeClock(recipe) .. "\n"
+				if Recipe.getNumBuildings(recipe) > 1 then
+					wikitext = wikitext .. "| \n"
+				else
+					wikitext = wikitext .. "| "
+				end
+				wikitext = wikitext .. renderBuildings(recipe, reqBuildingID) .. "\n"
+				wikitext = wikitext .. "|data-sort-value=" .. grade .. "| " .. gradeStars[grade] .. "<br />" .. Recipe.getTimeClock(recipe) .. "\n"
 				local numIngredients = Recipe.getNumIngredients(recipe)
 				for _ = 1, maxIngredients - numIngredients do
 					wikitext = wikitext .. "| &mdash;\n" -- empty cell filler
@@ -155,7 +222,7 @@ local function renderTableView(recipeBook, recipeCount, maxIngredients, numBuild
 						wikitext = wikitext .. "|class=ats-table-recipe-ingredients-options| \n" .. renderIngredientsInnerTable(recipe, j) .. "\n"
 					end
 				end
-				wikitext = wikitext .. "| " .. stackSize .. "\n"
+				wikitext = wikitext .. "| " .. stacksize .. "\n"
 				wikitext = wikitext .. "| " .. makeLink(productID, standards.huge, true, productID ~= reqProductID) .. "\n"
 			end
 		end
@@ -177,11 +244,15 @@ local function renderListView(recipeBook, recipeCount, requiredProduct, required
 	if recipeCount == 0 then
 		return "No recipes" .. (requiredProduct and (" for " .. requiredProduct) or "") .. (requiredBuilding and (" in the " .. requiredBuilding) or "") .. (requiredIngredient and (" using " .. requiredIngredient) or "") .. "."
 	end
-	for productID, recipeListByGrade in pairs(recipeBook) do
-		for grade, recipesByStacksize in pairs(recipeListByGrade) do
-			for _, recipe in pairs(recipesByStacksize) do
+	local sortedKeysProductID = sortKeysProductID(recipeBook)
+	for _, productID in ipairs(sortedKeysProductID) do
+		local sortedKeysGrade = sortKeysGrade(recipeBook[productID])
+		for _, grade in ipairs(sortedKeysGrade) do
+			local sortedKeysStacksize = sortKeysAmount(recipeBook[productID][grade])
+			for _, stacksize in ipairs(sortedKeysStacksize) do
+				local recipe = recipeBook[productID][grade][stacksize]
 				if requiredProduct then
-					for _, buildingID in ipairs(Recipe.getBuildings(recipe)) do
+					for _, buildingID in ipairs(sortedBuildingIDs(recipe)) do
 						wikitext = wikitext .. "* " .. makeLink(buildingID, "0", false, true) .. NBSP .. "(" .. gradeStars[grade] .. ")\n"
 					end
 				else
