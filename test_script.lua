@@ -1,7 +1,7 @@
 -- Debug/test launch script
 dofile("mw_runner.lua")
 
-local testFrame = { args = { product = "", building = "", ingredient = "Wood", display = "" } }
+local testFrame = { args = { product = "Scrolls", building = "", ingredient = "", display = "" } }
 local p = require("Module:RecipeView")
 print(p.main(testFrame))
 

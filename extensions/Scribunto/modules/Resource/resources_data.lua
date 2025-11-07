@@ -551,18 +551,6 @@ return {
         _tradingBuyValue = 2.8,
         _iconFilename = "Icon_Resource_Scrolls.png",
     },
-    ["[Needs] Scrolls - tutorial"] = {
-        _id = "[Needs] Scrolls - tutorial",
-        _displayName = "Scrolls",
-        _description = "Service goods used for Education. Unavailable in this tutorial. <u>Select the icon</u> to change to another resource.",
-        _category = "Consumable Items",
-        _isEatable = false,
-        _isBurnable = false,
-        _burningTime = 0,
-        _tradingSellValue = 1.8,
-        _tradingBuyValue = 3,
-        _iconFilename = "Icon_Resource_Scrolls.png",
-    },
     ["[Needs] Tea"] = {
         _id = "[Needs] Tea",
         _displayName = "Tea",
