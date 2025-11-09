@@ -42,15 +42,6 @@ function Wiki_Utility.surroundWithDiv(wikitext, ...)
   return "<div class=\"" .. table.concat({...}, " ") .. "\">" .. wikitext .. "</div>"
 end
 
--- Checks if the given icon size is valid, both as a number and within usable bounds as an icon.
----@param iconSize string size of the icon including units, e.g., "20em" or "x16px"
----@return boolean # `true` if the size string is a valid size
----@return number|nil sizeN the number part of the specified size
-function Wiki_Utility.isValidIconSize(iconSize)
-  local sizeN = tonumber(iconSize:match("^x?(%d+)"))
-  return sizeN and sizeN >= 0 and sizeN <= 300 or false, sizeN
-end
-
 -- Renders an icon with the given filename, size, link, and alt text.
 ---@param filename string filename of the icon
 ---@param size string size of the icon including units, e.g., "x16px"
@@ -74,9 +65,21 @@ end
 -- Renders a link to the given page name with the given text.
 ---@param pageName string name of the page
 ---@param text string text to display for the link
+---@param targetElementID string|nil #name or #id of the DOM element to link directly to, if any
 ---@return Wikitext wikitext wikitext markup for the link
-function Wiki_Utility.renderWikiLink(pageName, text)
-  return "[[" .. pageName .. "|" .. text .. "]]"
+function Wiki_Utility.renderWikiLink(pageName, text, targetElementID)
+  return "[[" .. pageName .. (targetElementID and ("" .. targetElementID) or "") .. "|" .. text .. "]]"
 end
+
+-- Checks if the given icon size is valid, both as a number and within usable bounds as an icon.
+---@param iconSize string size of the icon including units, e.g., "20em" or "x16px"
+---@return boolean # `true` if the size string is a valid size
+---@return number|nil sizeN the number part of the specified size
+function Wiki_Utility.isValidIconSize(iconSize)
+  local sizeN = tonumber(iconSize:match("^x?(%d+)"))
+  return sizeN and sizeN >= 0 and sizeN <= 300 or false, sizeN
+end
+
+
 
 return Wiki_Utility

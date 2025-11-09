@@ -103,8 +103,9 @@ end
 ---@param iconSize string|nil size of the icon including units, e.g., "x16px", or nil for default
 ---@param needsIcon boolean|nil or nil for default
 ---@param needsText boolean|nil or nil for default
+---@param targetElementID string|nil #name or #id of the DOM element to link directly to, if any
 ---@return Wikitext wikitext
-local function resourceLink(resource, iconSize, needsIcon, needsText)
+local function resourceLink(resource, iconSize, needsIcon, needsText, targetElementID)
   iconSize = iconSize or standards.small
   needsIcon = needsIcon or (needsIcon == nil and true)
   needsText = needsText or (needsText == nil and true)
@@ -115,13 +116,14 @@ local function resourceLink(resource, iconSize, needsIcon, needsText)
     if not iconSize:match("^x") then
       iconSize = "x" .. iconSize
     end
-    wikitext = wikitext .. wrapClasses(icon(resource._iconFilename, iconSize, resource._displayName, resource._displayName), "ats-link-resource", sizeN and sizeN < 23 and "ats-flag-small" or nil)
+    local directLink = resource._displayName .. (targetElementID and ("" .. targetElementID) or "")
+    wikitext = wikitext .. wrapClasses(icon(resource._iconFilename, iconSize, directLink, resource._displayName), "ats-link-resource", sizeN and sizeN < 23 and "ats-flag-small" or nil)
   end
   if (needsIcon and isValidSize and sizeN >= MIN_ICON_SIZE) and needsText then
     wikitext = wikitext .. NBSP
   end
   if needsText then
-    wikitext = wikitext .. link(resource._displayName, resource._displayName)
+    wikitext = wikitext .. link(resource._displayName, resource._displayName, targetElementID)
   end
   return nowrap(wikitext)
 end
@@ -167,7 +169,7 @@ function Resource.tableStack(pairsList, iconSize, ...)
     if not resource then return "[Resource table stack ID not found: " .. pair._id .. "]" end
     wikitext = wikitext .. "|-\n"
     wikitext = wikitext .. "| " .. pair._amount .. "\n"
-    wikitext = wikitext .. "|style=\"text-align:left;\"| " .. resourceLink(resource, iconSize or standards.medium, true, true) .. "\n"
+    wikitext = wikitext .. "|style=\"text-align:left;\"| " .. resourceLink(resource, iconSize or standards.medium, true, true, "#Product") .. "\n"
   end
   return wikitext .. "|}"
 end
@@ -177,9 +179,10 @@ end
 ---@param iconSize string|nil size of the icon including units, e.g., "x16px" or nil for default
 ---@param needsIcon boolean|nil or nil for default
 ---@param needsText boolean|nil or nil for default
+---@param targetElementID string|nil #name or #id of the DOM element to link directly to, if any
 ---@return Wikitext wikitext
-function Resource.resourceLinkByID(resourceID, iconSize, needsIcon, needsText)
-  return resourceLink(data()[resourceID], iconSize, needsIcon, needsText)
+function Resource.resourceLinkByID(resourceID, iconSize, needsIcon, needsText, targetElementID)
+  return resourceLink(data()[resourceID], iconSize, needsIcon, needsText, targetElementID)
 end
 
 -- Resource_link template invokes this method from MediaWiki.

@@ -70,7 +70,7 @@ end
 -- Sorts the building IDs in the recipe by their corresponding display names.
 ---@param recipe Recipe
 ---@return BuildingID[] buildingIDs sorted, but by display name
-local function sortedBuildingIDs(recipe)
+local function sortBuildingIDs(recipe)
 	local buildings = {}
 	for _, id in pairs(Recipe.getBuildings(recipe)) do
 		table.insert(buildings, {id = id, name = Building.getName(id)})
@@ -89,10 +89,11 @@ end
 ---@param iconSize string
 ---@param needsIcon boolean
 ---@param needsText boolean
+---@param targetElementID string|nil #name or #id of the DOM element to link directly to, if any
 ---@return Wikitext wikitext
-local function makeLink(id, iconSize, needsIcon, needsText)
+local function makeLink(id, iconSize, needsIcon, needsText, targetElementID)
 	if isGood(id) then
-		return Resource.resourceLinkByID(id, iconSize, needsIcon, needsText)
+		return Resource.resourceLinkByID(id, iconSize, needsIcon, needsText, targetElementID)
 	elseif isBuilding(id) then
 		return Building.buildingLinkByID(id, iconSize, needsIcon, needsText)
 	elseif isNeed(id) then
@@ -158,7 +159,7 @@ end
 ---@return Wikitext wikitext
 local function renderBuildings(recipe, reqBuildingID)
 	local wikitext = ""
-	local buildingIDs = sortedBuildingIDs(recipe)
+	local buildingIDs = sortBuildingIDs(recipe)
 	-- groups of buildings have smaller icons (and btw always show their names)
 	if #buildingIDs > 1 then
 		wikitext = wikitext .. Building.tableStack(buildingIDs, standards.large, "ats-table-recipe-multiple-buildings")
@@ -223,7 +224,7 @@ local function renderTableView(recipeBook, recipeCount, maxIngredients, numBuild
 					end
 				end
 				wikitext = wikitext .. "| " .. stacksize .. "\n"
-				wikitext = wikitext .. "| " .. makeLink(productID, standards.huge, true, productID ~= reqProductID) .. "\n"
+				wikitext = wikitext .. "| " .. makeLink(productID, standards.huge, true, productID ~= reqProductID, "#Ingredient") .. "\n"
 			end
 		end
 	end
@@ -252,11 +253,11 @@ local function renderListView(recipeBook, recipeCount, requiredProduct, required
 			for _, stacksize in ipairs(sortedKeysStacksize) do
 				local recipe = recipeBook[productID][grade][stacksize]
 				if requiredProduct then
-					for _, buildingID in ipairs(sortedBuildingIDs(recipe)) do
+					for _, buildingID in ipairs(sortBuildingIDs(recipe)) do
 						wikitext = wikitext .. "* " .. makeLink(buildingID, "0", false, true) .. NBSP .. "(" .. gradeStars[grade] .. ")\n"
 					end
 				else
-					wikitext = wikitext .. "* " .. makeLink(productID, standards.small, true, true) .. NBSP .. "(" .. gradeStars[grade] .. ")\n"
+					wikitext = wikitext .. "* " .. makeLink(productID, standards.small, true, true, "#Product") .. NBSP .. "(" .. gradeStars[grade] .. ")\n"
 				end
 			end
 		end
