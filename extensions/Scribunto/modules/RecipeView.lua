@@ -28,7 +28,7 @@ local gradeStars = Wiki_Utility.GradeStars
 -- Sorts the product IDs in the recipeBook by their corresponding display names.
 ---@param recipeBook RecipeBook
 ---@return ProductID[] productIDs sorted, but by display name
-local function sortKeysProductID(recipeBook)
+local function sortRecipeBookByProductIDs(recipeBook)
   local products = {}
   for id, _ in pairs(recipeBook) do
 		local pName = (isGood(id) and Resource.getName(id)) or (isNeed(id) and Need.getName(id)) or nil
@@ -46,7 +46,7 @@ end
 -- Sorts the grades in reverse order, since higher grade is better.
 ---@param recipeListByGrade RecipeListByGrade
 ---@return Grade[] grades sorted
-local function sortKeysGrade(recipeListByGrade)
+local function sortRecipeListByGrade(recipeListByGrade)
 	local grades = {}
 	for g, _ in pairs(recipeListByGrade) do
 		table.insert(grades, g)
@@ -58,7 +58,7 @@ end
 -- Sorts the stack sizes in reverse order, since larger stacks are better.
 ---@param recipeSublistByStacksize RecipeSublistByStacksize
 ---@return Amount[] amounts sorted
-local function sortKeysAmount(recipeSublistByStacksize)
+local function sortRecipeSublistByAmount(recipeSublistByStacksize)
 	local amounts = {}
 	for a, _ in pairs(recipeSublistByStacksize) do
 		table.insert(amounts, a)
@@ -114,7 +114,6 @@ local function makeCaption(recipeCount, requiredProduct, requiredBuilding, requi
 		.. (requiredProduct and (" for " .. requiredProduct) or "")
 		.. (requiredIngredient and (" using " .. requiredIngredient) or "")
 		.. (requiredBuilding and (" in the " .. requiredBuilding) or "")
-		.. "."
 end
 
 -- Starts the table and sets the caption and header row.<br>
@@ -129,9 +128,8 @@ end
 ---@param requiredBuilding BuildingName|nil for the caption
 ---@param requiredIngredient ResourceName|nil for the caption
 ---@return Wikitext wikitext
-local function startTableHeader(recipeCount, maxIngredients, numBuildings, requiredProduct, requiredBuilding, requiredIngredient)
-	local wikitext = "{| class=\"sortable mw-collapsible ats-table-recipe\n"
-	wikitext = wikitext .. "|+ " .. makeCaption(recipeCount, requiredProduct, requiredBuilding, requiredIngredient) .."\n"
+local function makeTableHeader(recipeCount, maxIngredients, numBuildings, requiredProduct, requiredBuilding, requiredIngredient)
+	local wikitext = "|+ " .. makeCaption(recipeCount, requiredProduct, requiredBuilding, requiredIngredient) .."\n"
 	wikitext = wikitext .. "|-\n"
 	wikitext = wikitext .. "! Building" .. (numBuildings > 1 and "s" or "") .. "\n"
 	wikitext = wikitext .. "! Grade" .. "\n"
@@ -149,7 +147,7 @@ local function startTableHeader(recipeCount, maxIngredients, numBuildings, requi
 	end
 	wikitext = wikitext .. "\n"
 	wikitext = wikitext .. "! #\n"
-	wikitext = wikitext .. "! Product\n"
+	wikitext = wikitext .. "! Product"
 	return wikitext
 end
 
@@ -157,7 +155,7 @@ end
 ---@param recipe Recipe
 ---@param reqBuildingID BuildingID|nil ID of the required building, or nil if none required
 ---@return Wikitext wikitext
-local function renderBuildings(recipe, reqBuildingID)
+local function renderBuildingsInner(recipe, reqBuildingID)
 	local wikitext = ""
 	local buildingIDs = sortBuildingIDs(recipe)
 	-- groups of buildings have smaller icons (and btw always show their names)
@@ -191,38 +189,31 @@ end
 ---@param requiredIngredient ResourceName|nil name of the ingredient, or nil if none required
 ---@return Wikitext wikitext markup that renders the recipe table
 local function renderTableView(recipeBook, recipeCount, maxIngredients, numBuildings, requiredProduct, reqProductID, requiredBuilding, reqBuildingID, requiredIngredient)
-	local wikitext = startTableHeader(recipeCount, maxIngredients, numBuildings, requiredProduct, requiredBuilding, requiredIngredient)
+	local wikitext = "{| class=\"sortable mw-collapsible ats-table-recipe\"\n" .. makeTableHeader(recipeCount, maxIngredients, numBuildings, requiredProduct, requiredBuilding, requiredIngredient) .. "\n"
 	if recipeCount == 0 then
-		wikitext = wikitext .. "|-\n"
-		wikitext = wikitext .. "| No recipes.\n"
+		return divWrap("\n" .. wikitext .. "|-\n| No recipes.\n|}\n", "ats-container-recipe")
 	end
-	local sortedKeysProductID = sortKeysProductID(recipeBook)
-	for _, productID in ipairs(sortedKeysProductID) do
-		local sortedKeysGrade = sortKeysGrade(recipeBook[productID])
-		for _, grade in ipairs(sortedKeysGrade) do
-			local sortedKeysStacksize = sortKeysAmount(recipeBook[productID][grade])
-			for _, stacksize in ipairs(sortedKeysStacksize) do
+	for _, productID in ipairs(sortRecipeBookByProductIDs(recipeBook)) do
+		for _, grade in ipairs(sortRecipeListByGrade(recipeBook[productID])) do
+			for _, stacksize in ipairs(sortRecipeSublistByAmount(recipeBook[productID][grade])) do
 				local recipe = recipeBook[productID][grade][stacksize]
 				wikitext = wikitext .. "|- <!-- Recipe row -->\n"
-				if Recipe.getNumBuildings(recipe) > 1 then
-					wikitext = wikitext .. "| \n"
-				else
-					wikitext = wikitext .. "| "
-				end
-				wikitext = wikitext .. renderBuildings(recipe, reqBuildingID) .. "\n"
+				-- Building(s), grade, and production time
+				wikitext = wikitext .. (Recipe.getNumBuildings(recipe) > 1 and "| \n" or "| ") .. renderBuildingsInner(recipe, reqBuildingID) .. "\n"
 				wikitext = wikitext .. "|data-sort-value=" .. grade .. "| " .. gradeStars[grade] .. "<br />" .. Recipe.getTimeClock(recipe) .. "\n"
+				-- Ingredients (at least one empty); first pad with empties then fill real slots
 				local numIngredients = Recipe.getNumIngredients(recipe)
-				for _ = 1, maxIngredients - numIngredients do
-					wikitext = wikitext .. "| &mdash;\n" -- empty cell filler
-				end
-				-- now that we have the empty cell fillers, we always need at least one ingredient cell
 				if numIngredients == 0 and maxIngredients == 0 then
 					wikitext = wikitext .. "| &mdash;\n"
 				else
+					for _ = 1, maxIngredients - numIngredients do
+						wikitext = wikitext .. "| &mdash;\n"
+					end
 					for j = 1, numIngredients do
 						wikitext = wikitext .. "|class=ats-table-recipe-ingredients-options| \n" .. renderIngredientsInnerTable(recipe, j) .. "\n"
 					end
 				end
+				-- Amount and product
 				wikitext = wikitext .. "| " .. stacksize .. "\n"
 				wikitext = wikitext .. "| " .. makeLink(productID, standards.huge, true, productID ~= reqProductID, "#Ingredient") .. "\n"
 			end
@@ -245,13 +236,11 @@ local function renderListView(recipeBook, recipeCount, requiredProduct, required
 	if recipeCount == 0 then
 		return "No recipes" .. (requiredProduct and (" for " .. requiredProduct) or "") .. (requiredBuilding and (" in the " .. requiredBuilding) or "") .. (requiredIngredient and (" using " .. requiredIngredient) or "") .. "."
 	end
-	local sortedKeysProductID = sortKeysProductID(recipeBook)
-	for _, productID in ipairs(sortedKeysProductID) do
-		local sortedKeysGrade = sortKeysGrade(recipeBook[productID])
-		for _, grade in ipairs(sortedKeysGrade) do
-			local sortedKeysStacksize = sortKeysAmount(recipeBook[productID][grade])
-			for _, stacksize in ipairs(sortedKeysStacksize) do
+	for _, productID in ipairs(sortRecipeBookByProductIDs(recipeBook)) do
+		for _, grade in ipairs(sortRecipeListByGrade(recipeBook[productID])) do
+			for _, stacksize in ipairs(sortRecipeSublistByAmount(recipeBook[productID][grade])) do
 				local recipe = recipeBook[productID][grade][stacksize]
+				-- When a product is specified, the list shows the buildings that can make it, otherwise for buildings and ingredients list the products
 				if requiredProduct then
 					for _, buildingID in ipairs(sortBuildingIDs(recipe)) do
 						wikitext = wikitext .. "* " .. makeLink(buildingID, "0", false, true) .. NBSP .. "(" .. gradeStars[grade] .. ")\n"

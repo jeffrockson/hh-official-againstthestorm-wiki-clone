@@ -221,6 +221,21 @@ local function buildingLink(building, iconSize, needsIcon, needsText, needsPlura
   return nowrap(wikitext)
 end
 
+-- Increments recipe counters in compileRecipeBook
+---@param recipe Recipe
+---@param recipeCount integer
+---@param maxIngredients integer
+---@param numBuildings integer
+---@return integer recipeCount + 1
+---@return integer maxIngredients across all recipes so far
+---@return integer numBuildings + 1
+local function addToRecipeCounts(recipe, recipeCount, maxIngredients, numBuildings)
+  recipeCount = recipeCount + 1
+  maxIngredients = math.max(maxIngredients, Recipe.getNumIngredients(recipe))
+  numBuildings = numBuildings + 1
+  return recipeCount, maxIngredients, numBuildings
+end
+
 --#endregion Private Members
 
 
@@ -283,38 +298,33 @@ function Building.compileRecipeBook(requiredProductID, requiredBuildingID, requi
   local maxIngredients = 0
   local numBuildings = 0
   for buildingID, building in pairs(buildingData) do
-    -- if no filter on buildings OR match
+    -- if no filter on buildings OR match, proceed to productID
     if not requiredBuildingID or buildingID == requiredBuildingID then
       for productID, recipeListByGrade in pairs(building._recipes) do
-        -- if no filter on product OR match
+        -- if no filter on product OR match, proceed to grade, stacksize, and ingredients
         if not requiredProductID or productID == requiredProductID then
           for grade, recipesByStacksize in pairs(recipeListByGrade) do
             for stacksize, recipe in pairs(recipesByStacksize) do
-              -- if no filter on ingredient OR match
+              -- if no filter on ingredient OR match, proceed to recipes
               if not requiredIngredientID or Recipe.isIngredientInOptions(recipe, requiredIngredientID) then
+                -- add to book if it's the first for this product
                 if recipeBook[productID] == nil then
                   recipeBook[productID] = { [grade] = { [stacksize] = copy(recipe) } }
-                  recipeCount = recipeCount + 1
-                  maxIngredients = math.max(maxIngredients, Recipe.getNumIngredients(recipe))
-                  numBuildings = numBuildings + 1
+                  recipeCount, maxIngredients, numBuildings = addToRecipeCounts(recipe, recipeCount, maxIngredients, numBuildings)
                 else
+                  -- add to grade if the product's already there
                   if recipeBook[productID][grade] == nil then
                     recipeBook[productID][grade] = { [stacksize] = copy(recipe) }
-                    recipeCount = recipeCount + 1
-                    maxIngredients = math.max(maxIngredients, Recipe.getNumIngredients(recipe))
-                    numBuildings = numBuildings + 1
+                    recipeCount, maxIngredients, numBuildings = addToRecipeCounts(recipe, recipeCount, maxIngredients, numBuildings)
                   else
+                    -- add to stacksize if the product and grade are already there too
                     if recipeBook[productID][grade][stacksize] == nil then
                       recipeBook[productID][grade][stacksize] = copy(recipe)
-                      recipeCount = recipeCount + 1
-                      maxIngredients = math.max(maxIngredients, Recipe.getNumIngredients(recipe))
-                      numBuildings = numBuildings + 1
+                      recipeCount, maxIngredients, numBuildings = addToRecipeCounts(recipe, recipeCount, maxIngredients, numBuildings)
                     else
-                      -- Add the building ID to the recipe's list of buildings that can make it.
+                      -- add the building if the product, grade, and stacksize are already there
                       Recipe.addBuilding(recipeBook[productID][grade][stacksize], buildingID)
-                      recipeCount = recipeCount + 1
-                      maxIngredients = math.max(maxIngredients, Recipe.getNumIngredients(recipe))
-                      numBuildings = numBuildings + 1
+                      recipeCount, maxIngredients, numBuildings = addToRecipeCounts(recipe, recipeCount, maxIngredients, numBuildings)
                     end
                   end
                 end
