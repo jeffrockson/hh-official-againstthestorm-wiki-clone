@@ -163,13 +163,20 @@ end
 ---@return Wikitext wikitext
 function Resource.tableStack(pairsList, iconSize, ...)
   local classes = {...}
+  -- quick check to see if amount column needed
+  local needsAmountColumn = false
+  for _, pair in ipairs(pairsList) do
+    if pair._amount and pair._amount ~= "" then
+      needsAmountColumn = true
+    end
+  end
   local wikitext = "{|" .. ((#classes > 0) and ("class=" .. table.concat(classes, " ")) or "") .. "\n"
   for _, pair in ipairs(pairsList) do
     local resource = data()[pair._id]
     if not resource then return "[Resource table stack ID not found: " .. pair._id .. "]" end
     wikitext = wikitext .. "|-\n"
-    wikitext = wikitext .. "| " .. pair._amount .. "\n"
-    wikitext = wikitext .. "|style=\"text-align:left;\"| " .. resourceLink(resource, iconSize or standards.medium, true, true, "#Product") .. "\n"
+    wikitext = wikitext .. (needsAmountColumn and ("|style=text-align:right| " .. (pair._amount or "") .. "\n") or "")
+    wikitext = wikitext .. "| " .. resourceLink(resource, iconSize or standards.medium, true, true, "#Product") .. "\n"
   end
   return wikitext .. "|}"
 end
@@ -209,6 +216,30 @@ function Resource.link(frame)
     return "[Resource not found: " .. name .. "]"
   end
   return resourceLink(resource, iconSize, needsIcon, needsText)
+end
+
+function Resource.stack(frame)
+  local parent = frame:getParent()
+  local args = parent and parent.args or frame.args
+  local iconSize = args.icon and (args.icon ~= "" and standards[args.icon] or standards.medium)
+  local classes = args.classes or ""
+  --@type ResourcePair[]
+  local pairsList = {}
+  -- handle the indeterminate number of unnamed parameters passed to the template, but skip empty ones
+  for _, pairStr in ipairs(args) do
+    if pairStr ~= "" then
+      local amount, name = pairStr:match("^(%d*)%s*(.+)$")
+      local resource = findName(name)
+      if not resource then
+        return "[Resource stack resource not found: " .. name .. "]"
+      end
+      pairsList[#pairsList + 1] = {_id = resource._id, _amount = amount}
+    end
+  end
+  if #pairsList == 0 then
+    return "[Resource stack needs at least one resource]"
+  end
+  return Resource.tableStack(pairsList, iconSize, classes)
 end
 
 --#endregion Public Methods
